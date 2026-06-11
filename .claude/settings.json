@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "usage-server": {
+      "command": "python3",
+      "args": ["experiments/usage-monitor/mcp-usage-server.py"]
+    },
+    "token-harbor": {
+      "command": "python3",
+      "args": ["experiments/token-harbor/mcp-token-harbor.py"]
+    }
+  }
+}
