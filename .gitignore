@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# Node / TypeScript
+node_modules/
+dist/
+*.js
+*.d.ts
+
+# Claude Code (local-only)
+.claude/settings.local.json
+.claude/agent-memory/
+
+# OS
+.DS_Store
+Thumbs.db
