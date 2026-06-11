@@ -8,5 +8,18 @@
       "command": "python3",
       "args": ["experiments/token-harbor/mcp-token-harbor.py"]
     }
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash experiments/usage-monitor/capture-usage.sh"
+          }
+        ]
+      }
+    ]
   }
 }
