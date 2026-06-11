@@ -1,4 +1,4 @@
-# claude-sample
+# Learning Claude
 
 A personal sandbox for experimenting with Claude Code features, with two MCP servers included.
 

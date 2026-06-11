@@ -5,7 +5,7 @@ This repository is a personal sandbox for learning and experimenting with Claude
 ## Structure
 
 ```
-sample/
+learning-claude/
 ├── experiments/
 │   ├── usage-monitor/   # MCP server: current-session token usage via /usage + tmux
 │   └── token-harbor/    # MCP server: all-time token usage + cost estimates across sessions
