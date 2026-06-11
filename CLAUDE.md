@@ -14,7 +14,7 @@ playground/          # Scratch files for testing Claude Code capabilities
 
 ## Active infrastructure
 
-Both MCP servers are registered via `.claude/settings.json` and available to anyone who clones the repo.
+Both MCP servers are registered via `.mcp.json` (project scope) using relative paths — portable across clones. Claude Code will prompt for approval on first launch.
 
 - **usage-server** (`experiments/usage-monitor/mcp-usage-server.py`) — exposes `get_usage`, returns token stats for the current session; prefers tmux-captured `/usage` output and falls back to parsing the JSONL log
 - **token-harbor** (`experiments/token-harbor/mcp-token-harbor.py`) — exposes `get_usage`, aggregates token usage and cost estimates across all sessions with optional date-range and project filtering

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "usage-server": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "experiments/usage-monitor/mcp-usage-server.py"
+      ],
+      "env": {}
+    },
+    "token-harbor": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "experiments/token-harbor/mcp-token-harbor.py"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -9,7 +9,7 @@ A personal sandbox for experimenting with Claude Code features, with two MCP ser
 
 ## Getting started
 
-Clone the repo and open it in Claude Code. Both MCP servers activate automatically — no extra setup needed.
+Clone the repo and open it in Claude Code. When prompted, approve the MCP servers — this one-time step is required for security.
 
 ```bash
 git clone https://github.com/Zekumoru/learning-claude.git
