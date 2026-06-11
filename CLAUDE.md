@@ -6,13 +6,17 @@ This repository is a personal sandbox for learning and experimenting with Claude
 
 ```
 sample/
-├── experiments/       # Self-contained Claude Code experiments
-│   └── usage-monitor/ # MCP server that exposes token usage as a callable tool
-└── playground/        # Scratch files for testing Claude Code capabilities
-    └── utils.ts       # Sample TypeScript code
+├── experiments/
+│   ├── usage-monitor/   # MCP server: current-session token usage via /usage + tmux
+│   └── token-harbor/    # MCP server: all-time token usage + cost estimates across sessions
+└── playground/          # Scratch files for testing Claude Code capabilities
+    └── utils.ts
 ```
 
 ## Active infrastructure
 
-- **MCP server** — `experiments/usage-monitor/mcp-usage-server.py` is registered for this project and exposes a `get_usage` tool
-- **Stop hook** — `experiments/usage-monitor/capture-usage.sh` runs after every turn to capture `/usage` output via tmux
+Both MCP servers are registered via `.claude/settings.json` and available to anyone who clones the repo.
+
+- **usage-server** (`experiments/usage-monitor/mcp-usage-server.py`) — exposes `get_usage`, returns token stats for the current session; prefers tmux-captured `/usage` output and falls back to parsing the JSONL log
+- **token-harbor** (`experiments/token-harbor/mcp-token-harbor.py`) — exposes `get_usage`, aggregates token usage and cost estimates across all sessions with optional date-range and project filtering
+- **Stop hook** — `experiments/usage-monitor/capture-usage.sh` runs after every turn to capture `/usage` output via tmux into `.claude/cc-usage.txt`
