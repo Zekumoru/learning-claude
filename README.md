@@ -4,7 +4,9 @@ A personal sandbox for experimenting with Claude Code features, with two MCP ser
 
 ## Requirements
 
-- **Python 3** — required for both MCP servers
+- **Python 3** — required for both MCP servers and the Python agent
+- **uv** — required to run the Python agent
+- **Node.js + pnpm** — required to run the TypeScript agent
 - **tmux** *(optional)* — enables real-time usage capture for `usage-server`; without it, the server falls back to JSONL parsing and the last turn will be one behind
 
 ## Getting started
@@ -67,6 +69,27 @@ Prices: live (LiteLLM)  |  As of: 2026-06-11T08:00:00Z
 
 Supported parameters: `start_date`, `end_date` (YYYY-MM-DD), and `project` (`"all"`, `"current"`, or a slug).
 
+## Playground
+
+Scratch files for experimenting with the Claude Agent SDK.
+
+### TypeScript agent
+
+Uses `@anthropic-ai/claude-agent-sdk` via pnpm. Install dependencies once, then run:
+
+```bash
+pnpm install
+pnpm start-agent
+```
+
+### Python agent
+
+Uses `claude-agent-sdk` managed by uv. No separate install step needed:
+
+```bash
+uv run playground/agent.py
+```
+
 ## Structure
 
 ```
@@ -76,5 +99,8 @@ experiments/
 │   └── capture-usage.sh
 └── token-harbor/    # token-harbor — all-time cost dashboard
     └── mcp-token-harbor.py
-playground/          # scratch files
+playground/          # scratch files for experimenting with Claude Agent SDK
+├── agent.ts         # TypeScript agent (run with: pnpm start-agent)
+├── agent.py         # Python agent (run with: uv run playground/agent.py)
+└── utils.ts
 ```
