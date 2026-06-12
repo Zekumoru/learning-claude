@@ -12,6 +12,10 @@ playground/          # Scratch files for testing Claude Code capabilities
 └── utils.ts
 ```
 
+## Conventions
+
+- Always use relative paths in scripts, config files, and any generated files — never absolute paths.
+
 ## Active infrastructure
 
 Both MCP servers are registered via `.mcp.json` (project scope) using relative paths — portable across clones. Claude Code will prompt for approval on first launch.
