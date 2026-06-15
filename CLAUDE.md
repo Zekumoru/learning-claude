@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This repository is a personal sandbox for learning and experimenting with Claude Code features.
+This repository is a personal sandbox for learning Claude courses and experimenting with Claude Code features.
 
 ## Structure
 
@@ -8,9 +8,14 @@ This repository is a personal sandbox for learning and experimenting with Claude
 experiments/
 ├── usage-monitor/   # MCP server: current-session token usage via /usage + tmux
 └── token-harbor/    # MCP server: all-time token usage + cost estimates across sessions
-playground/          # Scratch files for testing Claude Code and Agent SDK
-├── agent.ts         # TypeScript Claude Agent SDK experiment (pnpm start-agent)
-├── agent.py         # Python Claude Agent SDK experiment (uv run playground/agent.py)
+playground/          # Course exercises and Agent SDK experiments
+├── 01_first_request/   # First API request
+├── 02_chat/            # Chat, system prompts, temperature
+├── 03_streaming/       # Streaming and structured data
+├── 04_evaluation/      # Evaluation workflow, dataset generation, HTML report
+├── common/             # Shared utilities (e.g. chat helper)
+├── agent.ts            # TypeScript Claude Agent SDK experiment (pnpm start-agent)
+├── agent.py            # Python Claude Agent SDK experiment (uv run playground/agent.py)
 └── utils.ts
 ```
 

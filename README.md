@@ -1,6 +1,6 @@
 # Learning Claude
 
-A personal sandbox for experimenting with Claude Code features, with two MCP servers included.
+A personal sandbox for learning Claude courses and experimenting with Claude Code features, with two MCP servers included.
 
 ## Requirements
 
@@ -71,7 +71,24 @@ Supported parameters: `start_date`, `end_date` (YYYY-MM-DD), and `project` (`"al
 
 ## Playground
 
-Scratch files for experimenting with the Claude Agent SDK.
+Course exercises and Agent SDK experiments.
+
+### Course exercises
+
+Numbered directories under `playground/` follow the course sequence:
+
+| Directory | Topic |
+|-----------|-------|
+| `01_first_request/` | First API request |
+| `02_chat/` | Chat, system prompts, temperature |
+| `03_streaming/` | Streaming and structured data |
+| `04_evaluation/` | Evaluation workflow, dataset generation, HTML report |
+
+Run any exercise with uv (no separate install needed):
+
+```bash
+uv run playground/01_first_request/first_request.py
+```
 
 ### TypeScript agent
 
@@ -99,7 +116,12 @@ experiments/
 │   └── capture-usage.sh
 └── token-harbor/    # token-harbor — all-time cost dashboard
     └── mcp-token-harbor.py
-playground/          # scratch files for experimenting with Claude Agent SDK
+playground/          # course exercises and Agent SDK experiments
+├── 01_first_request/
+├── 02_chat/
+├── 03_streaming/
+├── 04_evaluation/
+├── common/          # shared utilities
 ├── agent.ts         # TypeScript agent (run with: pnpm start-agent)
 ├── agent.py         # Python agent (run with: uv run playground/agent.py)
 └── utils.ts
