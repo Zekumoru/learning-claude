@@ -8,8 +8,8 @@ add_user_message(
 )
 
 answer = chat(
-    messages,
-    "You are a Python engineer who writes very concise code and does not talk much more than necessary.",
+    messages=messages,
+    system="You are a Python engineer who writes very concise code and does not talk much more than necessary.",
 )
 
 print(answer)

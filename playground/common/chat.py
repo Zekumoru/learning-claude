@@ -19,7 +19,11 @@ def add_assistant_message(messages: list[MessageParam], text: str) -> None:
     messages.append({"role": "assistant", "content": text})
 
 
-def chat(messages: list[MessageParam], system: str | None) -> str:
+def chat(
+    messages: list[MessageParam],
+    system: str | None = None,
+    temperature: float | None = None,
+) -> str:
     params: MessageCreateParams = {
         "model": model,
         "max_tokens": max_tokens,
@@ -28,6 +32,9 @@ def chat(messages: list[MessageParam], system: str | None) -> str:
 
     if system:
         params["system"] = system
+
+    if temperature:
+        params["temperature"] = temperature
 
     message = client.messages.create(**params)
 
