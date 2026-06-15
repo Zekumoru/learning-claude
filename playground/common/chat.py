@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from anthropic import Anthropic
-from anthropic.types import ModelParam, MessageParam, TextBlock
+from anthropic.types import ModelParam, MessageParam, TextBlock, MessageCreateParams
 
 model: ModelParam = "claude-sonnet-4-6"
 max_tokens = 1024
@@ -19,12 +19,17 @@ def add_assistant_message(messages: list[MessageParam], text: str) -> None:
     messages.append({"role": "assistant", "content": text})
 
 
-def chat(messages: list[MessageParam]) -> str:
-    message = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=messages,
-    )
+def chat(messages: list[MessageParam], system: str | None) -> str:
+    params: MessageCreateParams = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+
+    if system:
+        params["system"] = system
+
+    message = client.messages.create(**params)
 
     first_block = message.content[0]
 
