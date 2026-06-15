@@ -3,7 +3,7 @@ import html as html_lib
 
 
 def write_html_report(results) -> None:
-    overall = sum(r.score for r in results) / len(results) if results else 0
+    overall = sum(r.model_grade.score for r in results) / len(results) if results else 0
     max_score = 10
 
     def score_class(score: float) -> str:
@@ -13,15 +13,19 @@ def write_html_report(results) -> None:
             return "score-mid"
         return "score-low"
 
+    def li_items(items: list[str]) -> str:
+        return "".join(f"<li>{html_lib.escape(item)}</li>" for item in items)
+
     cards_html = ""
     for i, result in enumerate(results, 1):
-        sc = score_class(result.score)
+        grade = result.model_grade
+        sc = score_class(grade.score)
         cards_html += f"""  <div class="card">
     <div class="card-toggle">
       <div class="toggle-top">
         <span class="task-num">Task {i}</span>
         <div class="toggle-right">
-          <span class="score-badge {sc}">{result.score:.0f}&thinsp;/&thinsp;{max_score}</span>
+          <span class="score-badge {sc}">{grade.score:.0f}&thinsp;/&thinsp;{max_score}</span>
           <span class="chevron">&#x203A;</span>
         </div>
       </div>
@@ -29,8 +33,27 @@ def write_html_report(results) -> None:
     </div>
     <div class="output-section">
       <div class="output-inner">
-        <div class="output-rendered"></div>
-        <div class="md-source" hidden>{html_lib.escape(result.output)}</div>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="assessment">Assessment</button>
+          <button class="tab-btn" data-tab="output">Output</button>
+        </div>
+        <div class="tab-panel" data-panel="assessment">
+          <p class="assessment-reasoning">{html_lib.escape(grade.reasoning)}</p>
+          <div class="assessment-cols">
+            <div class="assessment-strengths">
+              <h4>Strengths</h4>
+              <ul>{li_items(grade.strengths)}</ul>
+            </div>
+            <div class="assessment-weaknesses">
+              <h4>Weaknesses</h4>
+              <ul>{li_items(grade.weaknesses)}</ul>
+            </div>
+          </div>
+        </div>
+        <div class="tab-panel hidden" data-panel="output">
+          <div class="output-rendered"></div>
+          <div class="md-source" hidden>{html_lib.escape(result.output)}</div>
+        </div>
       </div>
     </div>
   </div>
@@ -81,6 +104,44 @@ def write_html_report(results) -> None:
     .card.open .output-section {{ border-top-color: #2d3450; }}
     .output-inner {{ padding: 1.25rem 1.4rem; }}
 
+    /* Tabs */
+    .tabs {{ display: flex; gap: 0.25rem; border-bottom: 1px solid #2d3450; margin-bottom: 1rem; }}
+    .tab-btn {{
+      background: none; border: none; cursor: pointer;
+      font-size: 0.82rem; font-weight: 600; padding: 0.45rem 0.85rem;
+      color: #64748b; border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: color 0.15s, border-color 0.15s;
+    }}
+    .tab-btn:hover {{ color: #94a3b8; }}
+    .tab-btn.active {{ color: #e2e8f0; border-bottom-color: #6366f1; }}
+
+    .tab-panel.hidden {{ display: none; }}
+
+    /* Assessment panel */
+    .assessment-reasoning {{
+      font-size: 0.88rem; line-height: 1.65; color: #94a3b8;
+      font-style: italic; margin-bottom: 1rem;
+    }}
+    .assessment-cols {{ display: flex; gap: 1.25rem; }}
+    .assessment-strengths, .assessment-weaknesses {{ flex: 1; }}
+    .assessment-strengths h4, .assessment-weaknesses h4 {{
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 0.5rem;
+    }}
+    .assessment-strengths h4 {{ color: #4ade80; }}
+    .assessment-weaknesses h4 {{ color: #f87171; }}
+    .assessment-strengths ul, .assessment-weaknesses ul {{
+      list-style: none; display: flex; flex-direction: column; gap: 0.35rem;
+    }}
+    .assessment-strengths li, .assessment-weaknesses li {{
+      font-size: 0.87rem; line-height: 1.5; padding-left: 1rem; position: relative;
+    }}
+    .assessment-strengths li::before {{ content: "+"; position: absolute; left: 0; color: #4ade80; font-weight: 700; }}
+    .assessment-weaknesses li::before {{ content: "−"; position: absolute; left: 0; color: #f87171; font-weight: 700; }}
+    .assessment-strengths li {{ color: #cbd5e1; }}
+    .assessment-weaknesses li {{ color: #cbd5e1; }}
+
+    /* Output panel (markdown) */
     .output-rendered h1, .output-rendered h2, .output-rendered h3, .output-rendered h4 {{
       color: #e2e8f0; font-weight: 600; margin: 1.2rem 0 0.45rem;
     }}
@@ -131,6 +192,21 @@ def write_html_report(results) -> None:
     }});
     hljs.highlightAll();
 
+    function switchTab(card, tabName) {{
+      card.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+      card.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tabName));
+    }}
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {{
+      btn.addEventListener('click', e => {{
+        e.stopPropagation();
+        const card = btn.closest('.card');
+        switchTab(card, btn.dataset.tab);
+        const section = card.querySelector('.output-section');
+        section.style.maxHeight = section.scrollHeight + 'px';
+      }});
+    }});
+
     document.querySelectorAll('.card-toggle').forEach(toggle => {{
       toggle.addEventListener('click', () => {{
         const card = toggle.closest('.card');
@@ -142,6 +218,7 @@ def write_html_report(results) -> None:
         }});
 
         if (!isOpen) {{
+          switchTab(card, 'assessment');
           card.classList.add('open');
           const section = card.querySelector('.output-section');
           section.style.maxHeight = section.scrollHeight + 'px';

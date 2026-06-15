@@ -17,8 +17,7 @@ class ModelGrade(BaseModel):
 class EvalResult(BaseModel):
     output: str
     test_case: TestCase
-    reasoning: str
-    score: float
+    model_grade: ModelGrade
 
 
 def run_prompt(test_case: TestCase) -> str:
@@ -67,12 +66,8 @@ def run_test_case(test_case: TestCase) -> EvalResult:
 
     # Grade the output
     model_grade = grade_by_model(test_case, output)
-    score = model_grade.score
-    reasoning = model_grade.reasoning
 
-    return EvalResult(
-        output=output, test_case=test_case, score=score, reasoning=reasoning
-    )
+    return EvalResult(output=output, test_case=test_case, model_grade=model_grade)
 
 
 def run_eval(dataset: list[TestCase]) -> list[EvalResult]:
