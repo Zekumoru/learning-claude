@@ -19,3 +19,7 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated files
+results.html
+dataset.json

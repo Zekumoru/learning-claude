@@ -1,42 +1,16 @@
 from anthropic.types import MessageParam
 from ..common.chat import chat, add_user_message
+from .generate_dataset import TestCase
+from .report import write_html_report
 from pydantic import BaseModel, TypeAdapter
+from pathlib import Path
 import json
 
 
-class TestCase(BaseModel):
-    task: str
-
-
-class TestCases(BaseModel):
-    test_cases: list[TestCase]
-
-
-def generate_dataset():
-    prompt = """
-Generate an evaluation dataset for a prompt evaluation. The dataset will be used to evaluate prompts that generate Python, JSON, or Regex specifically for AWS-related tasks. Generate an array of JSON objects, each representing task that requires Python, JSON, or a Regex to complete.
-
-Example output:
-```json
-[
-    {
-        "task": "Description of task",
-    },
-    ...additional
-]
-```
-
-* Focus on tasks that can be solved by writing a single Python function, a single JSON object, or a single regex.
-* Focus on tasks that do not require writing much code.
-
-Please generate 3 objects.
-"""
-
-    messages: list[MessageParam] = []
-    add_user_message(messages, prompt)
-
-    output = chat(messages, output_format=TestCases)
-    return output.test_cases
+class EvalResult(BaseModel):
+    output: str
+    test_case: TestCase
+    score: float
 
 
 def run_prompt(test_case: TestCase):
@@ -51,12 +25,6 @@ Please solve the following task:
     add_user_message(messages, prompt)
     output = chat(messages)
     return output
-
-
-class EvalResult(BaseModel):
-    output: str
-    test_case: TestCase
-    score: float
 
 
 def run_test_case(test_case: TestCase) -> EvalResult:
@@ -80,9 +48,9 @@ def run_eval(dataset: list[TestCase]) -> list[EvalResult]:
     return results
 
 
-dataset = generate_dataset()
-print(dataset)
+dataset_path = Path(__file__).parent / "dataset.json"
+raw = json.loads(dataset_path.read_text())
+dataset = TypeAdapter(list[TestCase]).validate_python(raw)
 
 results = run_eval(dataset)
-json_str = TypeAdapter(list[EvalResult]).dump_json(results, indent=2).decode()
-print(json_str)
+write_html_report(results)
