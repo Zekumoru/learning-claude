@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# A script to run Python scripts without having to write manually the path
+# when running -m mode.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: run path/to/module.py [args...]" >&2
+  exit 1
+fi
+
+target="$1"
+shift
+
+# Allow both:
+#   playground/02_chat/system_prompt.py
+#   ./playground/02_chat/system_prompt.py
+target="${target#./}"
+
+# Remove .py extension
+target="${target%.py}"
+
+# If someone passes a package __init__.py, run the package itself
+target="${target%/__init__}"
+
+# Convert path to Python module path
+module="${target//\//.}"
+
+uv run -m "$module" "$@"
