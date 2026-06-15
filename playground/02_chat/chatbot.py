@@ -1,5 +1,5 @@
-from chat import chat, add_user_message, add_assistant_message
 from anthropic.types import MessageParam
+from ..common.chat import chat, add_user_message, add_assistant_message
 
 messages: list[MessageParam] = []
 

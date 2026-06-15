@@ -32,19 +32,3 @@ def chat(messages: list[MessageParam]) -> str:
         raise TypeError("Expected a text response block")
 
     return first_block.text
-
-
-if __name__ == "__main__":
-    messages: list[MessageParam] = []
-
-    add_user_message(messages, "Define quantum computing in one sentence.")
-
-    answer = chat(messages)
-    add_assistant_message(messages, answer)
-
-    add_user_message(messages, "Write another sentence.")
-
-    answer = chat(messages)
-
-    print(answer)
-    print(messages)
