@@ -7,13 +7,21 @@ from pathlib import Path
 import json
 
 
-class EvalResult(BaseModel):
-    output: str
-    test_case: TestCase
+class ModelGrade(BaseModel):
+    strengths: list[str]
+    weaknesses: list[str]
+    reasoning: str
     score: float
 
 
-def run_prompt(test_case: TestCase):
+class EvalResult(BaseModel):
+    output: str
+    test_case: TestCase
+    reasoning: str
+    score: float
+
+
+def run_prompt(test_case: TestCase) -> str:
     """Merges the prompt and test case input, then returns the result"""
     prompt = f"""
 Please solve the following task:
@@ -27,14 +35,44 @@ Please solve the following task:
     return output
 
 
+def grade_by_model(test_case: TestCase, output) -> ModelGrade:
+    eval_prompt = f"""
+You are an expert code reviewer. Evaluate this AI-generated solution.
+
+Task:
+<task>
+{test_case.task}
+</task>
+
+Solution:
+<solution>
+{output}
+</solution>
+
+Provide your evaluation as a structured JSON object with:
+- "strengths": An array of 1-3 key strengths.
+- "weaknesses": An array of 1-3 key areas for improvement.
+- "reasoning": A concise explanation of your assessment.
+- "score": A number between 0-10. Can have up to two fixed decimal numbers.
+"""
+
+    messages: list[MessageParam] = []
+    add_user_message(messages, eval_prompt)
+    return chat(messages, output_format=ModelGrade)
+
+
 def run_test_case(test_case: TestCase) -> EvalResult:
     """Calls run_prompt, then grades the result"""
     output = run_prompt(test_case)
 
-    # TODO: Grading
-    score = 10
+    # Grade the output
+    model_grade = grade_by_model(test_case, output)
+    score = model_grade.score
+    reasoning = model_grade.reasoning
 
-    return EvalResult(output=output, test_case=test_case, score=score)
+    return EvalResult(
+        output=output, test_case=test_case, score=score, reasoning=reasoning
+    )
 
 
 def run_eval(dataset: list[TestCase]) -> list[EvalResult]:
