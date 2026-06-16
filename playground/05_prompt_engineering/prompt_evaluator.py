@@ -159,14 +159,18 @@ Please generate {num_cases} objects.
 
         from .report import write_html_report
 
-        write_html_report(results, dataset.task_description, report_file, pass_threshold)
+        write_html_report(
+            results, dataset.task_description, report_file, pass_threshold
+        )
 
         if results:
             average_score = sum(r.model_grade.score for r in results) / len(results)
             passed = sum(1 for r in results if r.model_grade.score >= pass_threshold)
             pass_rate = passed / len(results) * 100
             print(f"Average score: {average_score:.1f} / 10")
-            print(f"Pass rate (>= {pass_threshold:g}): {pass_rate:.1f}% ({passed}/{len(results)})")
+            print(
+                f"Pass rate (>= {pass_threshold:g}): {pass_rate:.1f}% ({passed}/{len(results)})"
+            )
 
         return results
 
@@ -196,6 +200,9 @@ Please generate {num_cases} objects.
 
         eval_prompt = f"""
 You are an expert evaluator. Evaluate this AI-generated response.
+
+Do not be cheesy with the scoring, if the output perfectly abode to the criteria, it should be 10.
+Any other suggestions or negative comments must just go to the negatives explaining why, but it shouldn't mean that the solver failed. 
 
 Inputs given to the prompt:
 <inputs>
