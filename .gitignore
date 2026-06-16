@@ -21,6 +21,6 @@ dist/
 Thumbs.db
 
 # Generated files
-dataset.json
-results.json
-results.html
+dataset*.json
+results*.json
+results*.html
