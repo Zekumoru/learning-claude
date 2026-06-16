@@ -13,6 +13,7 @@ playground/          # Course exercises and Agent SDK experiments
 ├── 02_chat/            # Chat, system prompts, temperature
 ├── 03_streaming/       # Streaming and structured data
 ├── 04_evaluation/      # Evaluation workflow, dataset generation, HTML report
+├── 05_prompt_engineering/  # PromptEvaluator class: dataset generation, concurrent grading, HTML report
 ├── common/             # Shared utilities (e.g. chat helper)
 ├── agent.ts            # TypeScript Claude Agent SDK experiment (pnpm start-agent)
 ├── agent.py            # Python Claude Agent SDK experiment (uv run playground/agent.py)

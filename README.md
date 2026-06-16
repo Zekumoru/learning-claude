@@ -83,6 +83,7 @@ Numbered directories under `playground/` follow the course sequence:
 | `02_chat/` | Chat, system prompts, temperature |
 | `03_streaming/` | Streaming and structured data |
 | `04_evaluation/` | Evaluation workflow, dataset generation, HTML report |
+| `05_prompt_engineering/` | PromptEvaluator class for iterative prompt improvement |
 
 Run any exercise with uv (no separate install needed):
 
@@ -121,6 +122,7 @@ playground/          # course exercises and Agent SDK experiments
 ├── 02_chat/
 ├── 03_streaming/
 ├── 04_evaluation/
+├── 05_prompt_engineering/
 ├── common/          # shared utilities
 ├── agent.ts         # TypeScript agent (run with: pnpm start-agent)
 ├── agent.py         # Python agent (run with: uv run playground/agent.py)
