@@ -39,6 +39,10 @@ def write_html_report(results) -> None:
         </div>
       </div>
       <p class="task-desc">{html_lib.escape(result.test_case.task)}</p>
+      <div class="task-criteria">
+        <span class="task-criteria-label">Solution criteria</span>
+        <p>{html_lib.escape(result.test_case.solution_criteria)}</p>
+      </div>
     </div>
     <div class="output-section">
       <div class="output-inner">
@@ -112,6 +116,16 @@ def write_html_report(results) -> None:
     .card.open .chevron {{ transform: rotate(90deg); }}
 
     .task-desc {{ font-size: 0.92rem; line-height: 1.55; color: #94a3b8; }}
+
+    .task-criteria {{
+      margin-top: 0.65rem; padding: 0.5rem 0.75rem;
+      background: #181d2e; border-left: 3px solid #6366f1; border-radius: 4px 6px 6px 4px;
+    }}
+    .task-criteria-label {{
+      display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: #818cf8; margin-bottom: 0.3rem;
+    }}
+    .task-criteria p {{ font-size: 0.85rem; line-height: 1.55; color: #aab4c8; }}
 
     .output-section {{ max-height: 0; overflow: hidden; transition: max-height 0.35s ease; border-top: 1px solid transparent; }}
     .card.open .output-section {{ border-top-color: #2d3450; }}

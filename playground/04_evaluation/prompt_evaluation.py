@@ -53,6 +53,11 @@ Solution:
 {output}
 </solution>
 
+Solution criteria:
+<criteria>
+{test_case.solution_criteria}
+</criteria>
+
 Provide your evaluation as a structured JSON object with:
 - "strengths": An array of 1-3 key strengths.
 - "weaknesses": An array of 1-3 key areas for improvement.

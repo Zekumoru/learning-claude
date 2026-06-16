@@ -8,6 +8,7 @@ from typing import Literal
 class TestCase(BaseModel):
     task: str
     format: Literal["python", "json", "regex"]
+    solution_criteria: str
 
 
 class TestCases(BaseModel):
@@ -23,7 +24,8 @@ Example output:
 [
     {
         "task": "Description of task",
-        "format": "python"
+        "format": "python",
+        "solution_criteria": "Solution criteria for the task"
     },
     ...additional
 ]
@@ -31,6 +33,7 @@ Example output:
 
 * Focus on tasks that can be solved by writing a single Python function, a single JSON object, or a single regex.
 * Focus on tasks that do not require writing much code.
+* The solution criteria must describe how the task's output will be evaluated.
 
 Please generate 3 objects.
 """
