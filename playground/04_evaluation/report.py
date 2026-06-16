@@ -1,9 +1,18 @@
 from pathlib import Path
 import html as html_lib
 
+# highlight.js has no grammar for bare regex patterns, so tagging it "regex" leaves the block unhighlighted
+_HLJS_LANG = {"regex": "plaintext"}
+
+
+def _to_fenced_code(format: str, output: str) -> str:
+    """Wraps output in a markdown code fence tagged with format"""
+    lang = _HLJS_LANG.get(format, format)
+    return f"```{lang}\n{output}\n```"
+
 
 def write_html_report(results) -> None:
-    overall = sum(r.model_grade.score for r in results) / len(results) if results else 0
+    overall = sum(r.total_score for r in results) / len(results) if results else 0
     max_score = 10
 
     def score_class(score: float) -> str:
@@ -19,13 +28,13 @@ def write_html_report(results) -> None:
     cards_html = ""
     for i, result in enumerate(results, 1):
         grade = result.model_grade
-        sc = score_class(grade.score)
+        sc = score_class(result.total_score)
         cards_html += f"""  <div class="card">
     <div class="card-toggle">
       <div class="toggle-top">
         <span class="task-num">Task {i}</span>
         <div class="toggle-right">
-          <span class="score-badge {sc}">{grade.score:.0f}&thinsp;/&thinsp;{max_score}</span>
+          <span class="score-badge {sc}">{result.total_score:.1f}&thinsp;/&thinsp;{max_score}</span>
           <span class="chevron">&#x203A;</span>
         </div>
       </div>
@@ -38,6 +47,10 @@ def write_html_report(results) -> None:
           <button class="tab-btn" data-tab="output">Output</button>
         </div>
         <div class="tab-panel" data-panel="assessment">
+          <div class="score-breakdown">
+            <span class="score-pill">Model&thinsp;grade: {grade.score:.1f}&thinsp;/&thinsp;{max_score}</span>
+            <span class="score-pill">Syntax: {result.syntax_score:.1f}&thinsp;/&thinsp;{max_score}</span>
+          </div>
           <p class="assessment-reasoning">{html_lib.escape(grade.reasoning)}</p>
           <div class="assessment-cols">
             <div class="assessment-strengths">
@@ -52,7 +65,7 @@ def write_html_report(results) -> None:
         </div>
         <div class="tab-panel hidden" data-panel="output">
           <div class="output-rendered"></div>
-          <div class="md-source" hidden>{html_lib.escape(result.output)}</div>
+          <div class="md-source" hidden>{html_lib.escape(_to_fenced_code(result.test_case.format, result.output))}</div>
         </div>
       </div>
     </div>
@@ -118,6 +131,12 @@ def write_html_report(results) -> None:
     .tab-panel.hidden {{ display: none; }}
 
     /* Assessment panel */
+    .score-breakdown {{ display: flex; gap: 0.5rem; margin-bottom: 0.85rem; }}
+    .score-pill {{
+      font-size: 0.78rem; font-weight: 600; color: #94a3b8;
+      background: #252b42; border: 1px solid #2d3450;
+      border-radius: 20px; padding: 0.2rem 0.65rem;
+    }}
     .assessment-reasoning {{
       font-size: 0.88rem; line-height: 1.65; color: #94a3b8;
       font-style: italic; margin-bottom: 1rem;
@@ -233,3 +252,14 @@ def write_html_report(results) -> None:
     output_path = Path(__file__).parent / "results.html"
     output_path.write_text(report)
     print(f"Report written to {output_path}")
+
+
+if __name__ == "__main__":
+    from .prompt_evaluation import EvalResult
+    from pydantic import TypeAdapter
+    import json
+
+    results_path = Path(__file__).parent / "results.json"
+    raw = json.loads(results_path.read_text())
+    results = TypeAdapter(list[EvalResult]).validate_python(raw)
+    write_html_report(results)

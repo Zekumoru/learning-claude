@@ -2,11 +2,12 @@ from anthropic.types import MessageParam
 from ..common.chat import chat, add_user_message
 from pydantic import BaseModel, TypeAdapter
 from pathlib import Path
-import json
+from typing import Literal
 
 
 class TestCase(BaseModel):
     task: str
+    format: Literal["python", "json", "regex"]
 
 
 class TestCases(BaseModel):
@@ -22,6 +23,7 @@ Example output:
 [
     {
         "task": "Description of task",
+        "format": "python"
     },
     ...additional
 ]
