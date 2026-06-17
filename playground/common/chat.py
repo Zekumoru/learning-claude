@@ -196,6 +196,9 @@ def run_conversation(
         if text.strip() != "":
             print(text + "\n")
 
+        if response.stop_reason == "max_tokens":
+            print("Error: max_tokens reached\n")
+
         if response.stop_reason != "tool_use":
             break
 
@@ -227,7 +230,7 @@ def _handle_stream_event(stream: MessageStream[Any]) -> None:
                     try:
                         json.loads(raw_input)
                     except json.JSONDecodeError:
-                        print("ERROR: Received invalid after stream")
+                        print("Error: Received invalid after stream")
 
 
 def run_conversation_stream(
@@ -248,6 +251,9 @@ def run_conversation_stream(
             print(response.model_dump_json(indent=2) + "\n")
 
         add_assistant_message(messages, response)
+
+        if response.stop_reason == "max_tokens":
+            print("Error: max_tokens reached\n")
 
         if response.stop_reason != "tool_use":
             break
