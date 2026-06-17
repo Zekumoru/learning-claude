@@ -10,15 +10,13 @@ Categorize sentiments of a tweet: either it's a positive tweet or a negative twe
 prompt_inputs_spec = {"tweet": "The tweet to evaluate sentiment from."}
 
 prompt = """
-Categorize the sentiment of the below tweet:
+Categorize the sentiment of the below tweet. Watch for sarcasm — superficially positive words can signal a negative sentiment when used sarcastically.
 
 <input_tweet>
 {tweet}
 </input_tweet>
 
-If the tweet has a positive sentiment, respond with "Positive". If it is negative, respond with "Negative".
-
-Here is an example input with an ideal response:
+Here are examples of the ONLY acceptable responses:
 <sample_input>
 Great game tonight!
 </sample_input>
@@ -32,6 +30,8 @@ Oh yeah, I really needed a flight delay tonight! Excellent!
 <ideal_output>
 Negative
 </ideal_output>
+
+Respond with ONLY the single word "Positive" or "Negative". Do not include any explanation, reasoning, punctuation, or additional text — just the single classification word.
 """
 
 extra_criteria = """
