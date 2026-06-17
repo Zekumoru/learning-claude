@@ -1,6 +1,5 @@
 from datetime import datetime
-from anthropic.types import ToolParam, ToolUnionParam
-from typing import cast, Any
+from anthropic.types import ToolParam
 
 
 def get_current_datetime(date_format="%Y-%m-%d %H:%M:%S"):
@@ -31,15 +30,3 @@ get_current_datetime_schema = ToolParam(
         },
     }
 )
-
-
-tools: list[ToolUnionParam] = [get_current_datetime_schema]
-
-
-def run_tool(tool_name: str, tool_input: dict[str, Any]) -> Any:
-    if tool_name == "get_current_datetime":
-        return get_current_datetime(**tool_input)
-
-
-if __name__ == "__main__":
-    print(get_current_datetime(""))
