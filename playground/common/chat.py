@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from typing import TypeVar, overload, cast, Any
+from typing import TypeVar, overload, cast, Any, Mapping
 from collections.abc import Callable
 from pydantic import BaseModel
 from anthropic import Anthropic
@@ -210,19 +210,42 @@ def run_conversation(
     return
 
 
-def _handle_stream_event(stream: MessageStream[Any]) -> None:
+def _get_eager_input_streaming_by_tool_name(
+    tools: list[ToolUnionParam] | None,
+) -> dict[str, bool]:
+    result: dict[str, bool] = {}
+
+    for tool in tools or []:
+        tool_dict = cast(Mapping[str, object], tool)
+
+        name = tool_dict.get("name")
+        if not isinstance(name, str):
+            continue
+
+        result[name] = tool_dict.get("eager_input_streaming") is True
+
+    return result
+
+
+def _handle_stream_event(
+    stream: MessageStream[Any],
+    tools: list[ToolUnionParam] | None = None,
+) -> None:
     tool_inputs: dict[int, str] = {}
+    eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
 
     for event in stream:
         match event.type:
             case "content_block_start":
                 if event.content_block.type == "tool_use":
                     tool_inputs[event.index] = ""
-                    print(
-                        f"\nGenerating tool use `{event.content_block.name}` arguments...\n",
-                        end="",
-                        flush=True,
-                    )
+                    tool_name = event.content_block.name
+                    if eager_by_tool_name[tool_name]:
+                        print(
+                            f"\nGenerating tool use `{tool_name}` arguments...\n",
+                            end="",
+                            flush=True,
+                        )
             case "content_block_delta":
                 if event.delta.type == "text_delta":
                     print(event.delta.text, end="", flush=True)
@@ -233,7 +256,8 @@ def _handle_stream_event(stream: MessageStream[Any]) -> None:
                 if event.index in tool_inputs:
                     raw_input = tool_inputs[event.index]
                     try:
-                        json.loads(raw_input)
+                        if raw_input:
+                            json.loads(raw_input)
                     except json.JSONDecodeError:
                         print("Error: Received invalid JSON after stream")
 
@@ -246,7 +270,7 @@ def run_conversation_stream(
 ) -> None:
     while True:
         with chat_stream(messages, tools=tools) as stream:
-            _handle_stream_event(stream)
+            _handle_stream_event(stream, tools=tools)
 
             response = stream.get_final_message()
 
