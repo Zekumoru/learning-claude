@@ -154,17 +154,24 @@ def run_conversation(
     messages: list[MessageParam],
     tools: list[ToolUnionParam] | None = None,
     run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
+    verbose: bool = False,
 ):
     while True:
         response = chat(messages, tools=tools)
+        if verbose:
+            print(response.model_dump_json(indent=2) + "\n")
 
         add_assistant_message(messages, response)
-        print(text_from_message(response))
+        text = text_from_message(response)
+        if text.strip() != "":
+            print(text + "\n")
 
         if response.stop_reason != "tool_use":
             break
 
         tool_results = run_tools(response, run_tool_callback)
+        if verbose:
+            print(json.dumps(tool_results, indent=2) + "\n")
         add_user_message(messages, tool_results)
 
     return
