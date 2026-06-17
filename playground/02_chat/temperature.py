@@ -1,5 +1,5 @@
 from anthropic.types import MessageParam
-from ..common.chat import chat, add_user_message
+from ..common.chat import chat, add_user_message, text_from_message
 
 
 def generate_movie_idea(label: str, temperature=1.0):
@@ -7,8 +7,8 @@ def generate_movie_idea(label: str, temperature=1.0):
 
     add_user_message(messages, "Generate a one sentence movie idea.")
 
-    answer = chat(messages, temperature=temperature)
-    print(f"{label} (temp: {temperature}):\n{answer}\n")
+    result = chat(messages, temperature=temperature)
+    print(f"{label} (temp: {temperature}):\n{text_from_message(result)}\n")
 
 
 generate_movie_idea("Low temperature", 0.0)

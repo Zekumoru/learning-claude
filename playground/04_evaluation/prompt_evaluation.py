@@ -1,5 +1,5 @@
 from anthropic.types import MessageParam
-from ..common.chat import chat, add_user_message
+from ..common.chat import chat, add_user_message, text_from_message
 from ..common.validation import validate_json, validate_python, validate_regex
 from .generate_dataset import TestCase
 from pydantic import BaseModel, TypeAdapter
@@ -36,7 +36,7 @@ Please solve the following task:
     messages: list[MessageParam] = []
     add_user_message(messages, prompt)
     output = chat(messages)
-    return output
+    return text_from_message(output)
 
 
 def grade_by_model(test_case: TestCase, output: str) -> ModelGrade:

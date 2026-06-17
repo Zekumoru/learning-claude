@@ -1,5 +1,5 @@
 from anthropic.types import MessageParam
-from ..common.chat import chat, add_user_message
+from ..common.chat import chat, add_user_message, text_from_message
 from pydantic import BaseModel
 from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
@@ -262,7 +262,7 @@ def evaluate_prompt(
     def run_prompt_function(prompt_inputs: dict[str, str]) -> str:
         messages: list[MessageParam] = []
         add_user_message(messages, prompt.format(**prompt_inputs))
-        return chat(messages)
+        return text_from_message(chat(messages))
 
     return evaluator.run_evaluation(
         run_prompt_function=run_prompt_function,

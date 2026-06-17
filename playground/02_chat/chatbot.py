@@ -1,5 +1,10 @@
 from anthropic.types import MessageParam
-from ..common.chat import chat, add_user_message, add_assistant_message
+from ..common.chat import (
+    chat,
+    add_user_message,
+    add_assistant_message,
+    text_from_message,
+)
 
 messages: list[MessageParam] = []
 
@@ -11,6 +16,6 @@ while True:
 
     add_user_message(messages, user_input)
 
-    answer = chat(messages)
-    add_assistant_message(messages, answer)
-    print(f"\n{answer}\n")
+    result = chat(messages)
+    add_assistant_message(messages, result)
+    print(f"\n{text_from_message(result)}\n")

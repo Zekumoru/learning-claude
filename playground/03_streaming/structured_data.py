@@ -6,6 +6,7 @@ from ..common.chat import (
     chat,
     add_user_message,
     add_assistant_message,
+    text_from_message,
 )
 
 messages: list[MessageParam] = []
@@ -16,8 +17,8 @@ add_user_message(messages, "Generate a very short event bridge rule as json.")
 # Does not work in most of the new models
 def generate_with_prefill():
     add_assistant_message(messages, "```json")
-    answer = chat(messages, stop_sequences=["```"])
-    print(answer)
+    result = chat(messages, stop_sequences=["```"])
+    print(text_from_message(result))
 
 
 def generate_with_output_config():

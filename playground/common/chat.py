@@ -3,14 +3,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from typing import TypeVar, overload, cast, Any
+from collections.abc import Callable
 from pydantic import BaseModel
 from anthropic import Anthropic
 from anthropic.types import (
     ModelParam,
     MessageParam,
-    TextBlock,
     MessageCreateParams,
+    Message,
+    ToolUnionParam,
+    ToolResultBlockParam,
 )
+import json
 
 model: ModelParam = "claude-sonnet-4-6"
 max_tokens = 1024
@@ -18,12 +22,29 @@ max_tokens = 1024
 client = Anthropic()
 
 
-def add_user_message(messages: list[MessageParam], text: str) -> None:
-    messages.append({"role": "user", "content": text})
+def add_user_message(
+    messages: list[MessageParam], message: str | Message | list[ToolResultBlockParam]
+) -> None:
+    messages.append(
+        {
+            "role": "user",
+            "content": message.content if isinstance(message, Message) else message,
+        }
+    )
 
 
-def add_assistant_message(messages: list[MessageParam], text: str) -> None:
-    messages.append({"role": "assistant", "content": text})
+def add_assistant_message(messages: list[MessageParam], message: str | Message) -> None:
+    messages.append(
+        {
+            "role": "assistant",
+            "content": message.content if isinstance(message, Message) else message,
+        }
+    )
+
+
+def text_from_message(message: Message):
+    blocks = [block.text for block in message.content if block.type == "text"]
+    return "\n".join(blocks)
 
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
@@ -36,8 +57,9 @@ def chat(
     system: str | None = None,
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
+    tools: list[ToolUnionParam] | None = None,
     output_format: None = None,
-) -> str: ...
+) -> Message: ...
 
 
 @overload
@@ -47,6 +69,7 @@ def chat(
     system: str | None = None,
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
+    tools: list[ToolUnionParam] | None = None,
     output_format: type[TOutput],
 ) -> TOutput: ...
 
@@ -57,8 +80,9 @@ def chat(
     system: str | None = None,
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
+    tools: list[ToolUnionParam] | None = None,
     output_format: type[TOutput] | None = None,
-) -> str | TOutput:
+) -> Message | TOutput:
     params: MessageCreateParams = {
         "model": model,
         "max_tokens": max_tokens,
@@ -74,6 +98,9 @@ def chat(
     if stop_sequences is not None:
         params["stop_sequences"] = stop_sequences
 
+    if tools is not None:
+        params["tools"] = tools
+
     if output_format is not None:
         response = client.messages.parse(
             **cast(Any, params), output_format=output_format
@@ -87,10 +114,57 @@ def chat(
         return parsed
 
     message = client.messages.create(**params)
+    return message
 
-    first_block = message.content[0]
 
-    if not isinstance(first_block, TextBlock):
-        raise TypeError("Expected a text response block")
+def run_tools(
+    message: Message, run_tool: Callable[[str, dict[str, Any]], Any] | None
+) -> list[ToolResultBlockParam]:
+    tool_requests = [block for block in message.content if block.type == "tool_use"]
+    tool_result_blocks: list[ToolResultBlockParam] = []
 
-    return first_block.text
+    for tool_request in tool_requests:
+        try:
+            if run_tool is None:
+                raise ValueError(
+                    f"Could not run tool '{tool_request.name}': missing tool handler."
+                )
+
+            tool_output = run_tool(tool_request.name, tool_request.input)
+            tool_result_block: ToolResultBlockParam = {
+                "type": "tool_result",
+                "tool_use_id": tool_request.id,
+                "content": json.dumps(tool_output),
+                "is_error": False,
+            }
+        except Exception as e:
+            tool_result_block: ToolResultBlockParam = {
+                "type": "tool_result",
+                "tool_use_id": tool_request.id,
+                "content": f"Error: {e}",
+                "is_error": True,
+            }
+
+        tool_result_blocks.append(tool_result_block)
+
+    return tool_result_blocks
+
+
+def run_conversation(
+    messages: list[MessageParam],
+    tools: list[ToolUnionParam] | None = None,
+    run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
+):
+    while True:
+        response = chat(messages, tools=tools)
+
+        add_assistant_message(messages, response)
+        print(text_from_message(response))
+
+        if response.stop_reason != "tool_use":
+            break
+
+        tool_results = run_tools(response, run_tool_callback)
+        add_user_message(messages, tool_results)
+
+    return
