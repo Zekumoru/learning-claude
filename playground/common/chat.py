@@ -215,22 +215,27 @@ def _handle_stream_event(stream: MessageStream[Any]) -> None:
 
     for event in stream:
         match event.type:
-            case "content_block_delta":
-                if event.delta.type == "text_delta":
-                    print(event.delta.text, end="", flush=True)
-                if event.delta.type == "input_json_delta":
-                    tool_inputs[event.index] += event.delta.partial_json
-                    print(event.delta.partial_json, end="", flush=True)
             case "content_block_start":
                 if event.content_block.type == "tool_use":
                     tool_inputs[event.index] = ""
+                    print(
+                        f"\nGenerating tool use `{event.content_block.name}` arguments...\n",
+                        end="",
+                        flush=True,
+                    )
+            case "content_block_delta":
+                if event.delta.type == "text_delta":
+                    print(event.delta.text, end="", flush=True)
+                elif event.delta.type == "input_json_delta":
+                    tool_inputs[event.index] += event.delta.partial_json
+                    print(event.delta.partial_json, end="", flush=True)
             case "content_block_stop":
                 if event.index in tool_inputs:
                     raw_input = tool_inputs[event.index]
                     try:
                         json.loads(raw_input)
                     except json.JSONDecodeError:
-                        print("Error: Received invalid after stream")
+                        print("Error: Received invalid JSON after stream")
 
 
 def run_conversation_stream(
