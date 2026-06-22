@@ -8,7 +8,8 @@ from .tools import tools, run_tool
 messages: list[MessageParam] = []
 
 while True:
-    user_input = input("|: ")
+    user_input = input("\033[32m|:\033[0m ")
+    print()
 
     if user_input == "exit":
         break

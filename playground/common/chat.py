@@ -232,6 +232,8 @@ def _handle_stream_event(
     tools: list[ToolUnionParam] | None = None,
 ) -> None:
     tool_inputs: dict[int, str] = {}
+    eager_indices: set[int] = set()
+    printed_text = False
     eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
 
     for event in stream:
@@ -240,18 +242,27 @@ def _handle_stream_event(
                 if event.content_block.type == "tool_use":
                     tool_inputs[event.index] = ""
                     tool_name = event.content_block.name
-                    if eager_by_tool_name[tool_name]:
+                    prefix = "\n" if printed_text else ""
+                    if eager_by_tool_name.get(tool_name, False):
+                        eager_indices.add(event.index)
                         print(
-                            f"\nGenerating tool use `{tool_name}` arguments...\n",
+                            f"{prefix}\033[36mGenerating tool use `{tool_name}` arguments...\033[0m\n",
                             end="",
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"{prefix}\033[36mUsing tool `{tool_name}`...\033[0m",
                             flush=True,
                         )
             case "content_block_delta":
                 if event.delta.type == "text_delta":
+                    printed_text = True
                     print(event.delta.text, end="", flush=True)
                 elif event.delta.type == "input_json_delta":
                     tool_inputs[event.index] += event.delta.partial_json
-                    print(event.delta.partial_json, end="", flush=True)
+                    if event.index in eager_indices:
+                        print(event.delta.partial_json, end="", flush=True)
             case "content_block_stop":
                 if event.index in tool_inputs:
                     raw_input = tool_inputs[event.index]
@@ -274,7 +285,10 @@ def run_conversation_stream(
 
             response = stream.get_final_message()
 
-        print("\n")
+        if response.stop_reason != "tool_use":
+            print("\n")
+        else:
+            print()
 
         if verbose:
             print(response.model_dump_json(indent=2) + "\n")

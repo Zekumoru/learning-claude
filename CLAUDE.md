@@ -28,6 +28,8 @@ playground/          # Course exercises and Agent SDK experiments
 ## Conventions
 
 - Always use relative paths in scripts, config files, and any generated files — never absolute paths.
+- Always use proper types from libraries/SDKs — prefer typed constructs (e.g. `ToolParam`, `ToolTextEditor20250728Param`) over untyped dicts.
+- When guiding the user through code, present it step by step — explain what each piece does before moving on.
 
 ## Active infrastructure
 
