@@ -16,6 +16,7 @@ tools: list[ToolUnionParam] = [
     set_reminder_schema,
     save_article_schema,
     text_editor_schema,
+    # Note: haiku does not support web tooling, if using that model, comment:
     web_search_schema,
 ]
 

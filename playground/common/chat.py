@@ -20,6 +20,12 @@ import json
 model: ModelParam = "claude-sonnet-4-6"
 max_tokens = 1024
 
+PRICING_PER_MILLION: dict[str, dict[str, float]] = {
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-8": {"input": 5.00, "output": 25.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+}
+
 client = Anthropic()
 
 
@@ -46,6 +52,27 @@ def add_assistant_message(messages: list[MessageParam], message: str | Message) 
 def text_from_message(message: Message) -> str:
     blocks = [block.text for block in message.content if block.type == "text"]
     return "\n".join(blocks)
+
+
+def print_usage(message: Message) -> None:
+    usage = message.usage
+    input_tokens = usage.input_tokens
+    output_tokens = usage.output_tokens
+    total_tokens = input_tokens + output_tokens
+
+    pricing = PRICING_PER_MILLION.get(model)
+
+    if pricing:
+        input_cost = input_tokens * pricing["input"] / 1_000_000
+        output_cost = output_tokens * pricing["output"] / 1_000_000
+        total_cost = input_cost + output_cost
+        cost_str = f" | ${total_cost:.6f}"
+    else:
+        cost_str = ""
+
+    print(
+        f"\033[33m[{input_tokens} in + {output_tokens} out = {total_tokens} tokens{cost_str}]\033[0m"
+    )
 
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
@@ -192,7 +219,11 @@ def run_conversation(
             print(response.model_dump_json(indent=2) + "\n")
 
         add_assistant_message(messages, response)
+        print_usage(response)
+        print("\n")
+
         text = text_from_message(response)
+
         if text.strip() != "":
             print(text + "\n")
 
@@ -300,6 +331,8 @@ def run_conversation_stream(
             print(response.model_dump_json(indent=2) + "\n")
 
         add_assistant_message(messages, response)
+        print_usage(response)
+        print("\n")
 
         if response.stop_reason == "max_tokens":
             print("Error: max_tokens reached\n")
