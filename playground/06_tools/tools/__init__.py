@@ -8,6 +8,7 @@ from .add_duration_to_datetime import (
 from .set_reminder import set_reminder, set_reminder_schema, parse_tool_datetime
 from .save_article import save_article, save_article_schema
 from .text_editor import handle_text_editor, text_editor_schema
+from .web_search import web_search_schema
 
 tools: list[ToolUnionParam] = [
     get_current_datetime_schema,
@@ -15,6 +16,7 @@ tools: list[ToolUnionParam] = [
     set_reminder_schema,
     save_article_schema,
     text_editor_schema,
+    web_search_schema,
 ]
 
 

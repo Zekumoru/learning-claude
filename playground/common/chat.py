@@ -239,7 +239,10 @@ def _handle_stream_event(
     for event in stream:
         match event.type:
             case "content_block_start":
-                if event.content_block.type == "tool_use":
+                if event.content_block.type == "server_tool_use":
+                    prefix = "\n" if printed_text else ""
+                    print(f"{prefix}\033[35mSearching the web...\033[0m", flush=True)
+                elif event.content_block.type == "tool_use":
                     tool_inputs[event.index] = ""
                     tool_name = event.content_block.name
                     prefix = "\n" if printed_text else ""
@@ -260,9 +263,10 @@ def _handle_stream_event(
                     printed_text = True
                     print(event.delta.text, end="", flush=True)
                 elif event.delta.type == "input_json_delta":
-                    tool_inputs[event.index] += event.delta.partial_json
-                    if event.index in eager_indices:
-                        print(event.delta.partial_json, end="", flush=True)
+                    if event.index in tool_inputs:
+                        tool_inputs[event.index] += event.delta.partial_json
+                        if event.index in eager_indices:
+                            print(event.delta.partial_json, end="", flush=True)
             case "content_block_stop":
                 if event.index in tool_inputs:
                     raw_input = tool_inputs[event.index]
@@ -285,7 +289,9 @@ def run_conversation_stream(
 
             response = stream.get_final_message()
 
-        if response.stop_reason != "tool_use":
+        is_tool_use = response.stop_reason in ("tool_use", "pause_turn")
+
+        if not is_tool_use:
             print("\n")
         else:
             print()
@@ -298,8 +304,15 @@ def run_conversation_stream(
         if response.stop_reason == "max_tokens":
             print("Error: max_tokens reached\n")
 
-        if response.stop_reason != "tool_use":
+        if not is_tool_use:
             break
+
+        if response.stop_reason == "pause_turn":
+            messages = [
+                messages[0],
+                {"role": "assistant", "content": response.content},
+            ]
+            continue
 
         tool_results = run_tools(response, run_tool_callback)
 
