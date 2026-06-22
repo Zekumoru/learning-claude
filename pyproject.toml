@@ -7,5 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "anthropic>=0.109.1",
     "claude-agent-sdk>=0.2.99",
+    "numpy>=2.5.0",
     "python-dotenv>=1.2.2",
+    "voyageai>=0.4.1",
 ]
