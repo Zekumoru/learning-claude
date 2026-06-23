@@ -105,3 +105,39 @@ class BM25Index(SearchIndex):
 
         scores.sort(key=lambda x: x[1], reverse=True)
         return [(self.documents[i], s) for i, s in scores[:top_k]]
+
+
+class Retriever:
+    def __init__(self, *indexes: SearchIndex) -> None:
+        if len(indexes) == 0:
+            raise ValueError("At least one index must be provided.")
+
+        self._indexes = list(indexes)
+
+    def add_document(self, document: dict[str, Any]) -> None:
+        for index in self._indexes:
+            index.add_document(document)
+
+    # Search using vector search and BM25 search
+    #
+    # k_rrf (reciprocal rank fusion) dampens the rank differences.
+    # Without it, rank 1 vs rank 2 would be a huge gap (1.0 vs 0.5).
+    # With k_rrf=60, it's 0.0164 vs 0.0161, much smoother.
+    def search(
+        self, query: str, top_k: int = 5, k_rrf: int = 60
+    ) -> list[tuple[dict[str, Any], float]]:
+        rrf_scores: dict[int, float] = {}
+        doc_map: dict[int, dict[str, Any]] = {}
+
+        for index in self._indexes:
+            results = index.search(query, top_k=top_k)
+
+            for rank, (doc, _) in enumerate(results):
+                doc_id = id(doc)
+                doc_map[doc_id] = doc
+                rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + 1.0 / (
+                    k_rrf + rank + 1
+                )
+
+        sorted_results = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+        return [(doc_map[doc_id], score) for doc_id, score in sorted_results[:top_k]]

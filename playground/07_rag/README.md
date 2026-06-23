@@ -1,6 +1,6 @@
 # 07 - Retrieval-Augmented Generation (RAG)
 
-A from-scratch RAG pipeline that chunks documents, embeds them with Voyage AI, stores them in a vector index, and searches using both semantic and lexical (BM25) approaches.
+A from-scratch RAG pipeline that chunks documents, embeds them with sentence-transformers, stores them in a vector index, and searches using semantic, lexical (BM25), and hybrid (RRF) approaches.
 
 ## What is RAG?
 
@@ -15,21 +15,18 @@ RAG lets an LLM answer questions about documents it hasn't seen during training.
 ## Files
 
 - `chunks.py` — text chunking strategies (by character count, by markdown section)
-- `embeddings.py` — Voyage AI embedding generation + `VectorIndex` for semantic search
-- `search.py` — `BM25Index` for lexical search
-- `main.py` — ties it all together: loads a report, chunks it, embeds it, and runs both search types
+- `embeddings.py` — sentence-transformers embedding generation (`all-MiniLM-L6-v2`, runs locally)
+- `search.py` — `SearchIndex` protocol, `VectorIndex` for semantic search, `BM25Index` for lexical search, `Retriever` for hybrid search via reciprocal rank fusion
+- `main.py` — ties it all together: loads a report, chunks it, and runs all three search types
 - `report.md` — sample document to search against
 
 ## Concepts Learned
 
-### Embeddings and `input_type` (Asymmetric Search)
+### Embeddings
 
-Voyage AI's `embed()` accepts an `input_type` parameter: `"document"` or `"query"`. This is called **asymmetric search** — the model prepends a hidden prompt before creating the embedding:
+Embeddings are numerical vector representations of text. Similar meanings produce vectors that point in similar directions. We use `sentence-transformers` with the `all-MiniLM-L6-v2` model, which runs locally — no API key needed.
 
-- `"document"` — optimized for content being searched *through* (your knowledge base chunks)
-- `"query"` — optimized for the thing you're searching *with* (user's question)
-
-This pushes queries and their relevant documents closer together in vector space than they would be with a single embedding type.
+Some embedding APIs (like Voyage AI) support **asymmetric search** via an `input_type` parameter (`"document"` vs `"query"`), which optimizes embeddings differently for content being searched through vs. the search query itself. `sentence-transformers` doesn't have this — same embedding for both sides.
 
 ### Cosine Similarity
 
@@ -89,6 +86,21 @@ The full scoring formula also accounts for **document length normalization** —
 
 Hybrid search runs both in parallel and merges results for the best of both worlds.
 
+### Reciprocal Rank Fusion (RRF) — Hybrid Search
+
+The problem with merging results from vector search and BM25 is that their scores are incompatible — cosine similarity (0.71) and BM25 scores (3.2) can't be compared directly. RRF solves this by throwing away the raw scores and using only **rank positions**.
+
+The formula: `RRF_score(d) = Σ(1 / (k + rank))` for each search system.
+
+- **`k`** (default 60) — a dampening constant. Without it, rank 1 scores 1.0 and rank 2 scores 0.5 — a massive cliff. With k=60, the difference between rank 1 (0.0164) and rank 2 (0.0161) is gentle.
+- **Summation across systems** — if a document appears in both vector and BM25 results, its scores add up. A document ranked #2 by both systems beats one ranked #1 by only one system.
+
+RRF rewards **consistent presence across search systems** more than dominating a single one.
+
+### `Protocol` — Python's Interface
+
+`Protocol` from `typing` defines a contract of methods a class must implement — like TypeScript's `interface`. It's purely a type-checking concept with zero runtime effect. With explicit inheritance (`class VectorIndex(SearchIndex)`), the type checker enforces the contract at definition time — if you forget a method or get the signature wrong, it errors immediately.
+
 ## Python Typing Concepts
 
 ### `@overload` — Smart Return Types
@@ -113,11 +125,3 @@ InputType = Literal["query", "document"]
 ```
 
 Restricts a value to specific strings — your editor autocompletes the options. Unlike TypeScript's `"query" | "document" | (string & {})` trick, Python's `Literal` is strict: only those exact values are allowed. `Literal[...] | str` just collapses to `str`.
-
-### `voyageai.Client` Import Issue
-
-The `voyageai` package ships a `py.typed` marker, which enables strict export checking in Pyright. Its `__init__.py` does `from voyageai.client import Client` without the explicit re-export syntax (`as Client`), so Pyright treats it as a private import. Fix: import from the submodule directly:
-
-```python
-from voyageai.client import Client as VoyageClient
-```
