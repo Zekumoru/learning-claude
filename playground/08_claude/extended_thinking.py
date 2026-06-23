@@ -1,4 +1,9 @@
-from anthropic.types import MessageParam, ThinkingBlock, TextBlock
+from anthropic.types import (
+    MessageParam,
+    ThinkingBlock,
+    TextBlock,
+    RedactedThinkingBlock,
+)
 from ..common.chat import chat, max_tokens, print_usage, add_user_message
 
 budget_tokens = int(max_tokens / 2)
@@ -11,7 +16,12 @@ response = chat(messages, thinking={"type": "enabled", "budget_tokens": budget_t
 print_usage(response)
 
 for block in response.content:
-    if isinstance(block, ThinkingBlock):
-        print(f"\n\033[36m[Thinking]\033[0m\n{block.thinking}\n")
-    elif isinstance(block, TextBlock):
-        print(f"\n\033[32m[Response]\033[0m\n{block.text}\n")
+    match block:
+        case ThinkingBlock():
+            print(f"\n\033[36m[Thinking]\033[0m\n{block.thinking}\n")
+        case RedactedThinkingBlock():
+            print(
+                f"\n\033[31m[Redacted Thinking]\033[0m\n(encrypted, {len(block.data)} chars)\n"
+            )
+        case TextBlock():
+            print(f"\n\033[32m[Response]\033[0m\n{block.text}\n")
