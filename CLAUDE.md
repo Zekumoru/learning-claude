@@ -16,6 +16,9 @@ playground/          # Course exercises and Agent SDK experiments
 ├── 05_prompt_engineering/  # PromptEvaluator class: dataset generation, concurrent grading, HTML report
 ├── 06_tools/           # Tool use chatbots (imports tools from common/)
 ├── 07_rag/             # RAG pipeline: chunking, search, and RAG-powered chatbot
+├── 08_claude/          # Features of Claude: extended thinking, vision, PDF, citations, caching, code execution
+├── 09_mcp/             # MCP: tools, resources, prompts, server inspector, client; Claude Code & computer use
+├── 10_agent/           # Agents & workflows: parallelization, chaining, routing, tools, environment inspection
 ├── common/             # Shared utilities, tools, and RAG infrastructure
 │   ├── chat.py             # Anthropic client, conversation loops, streaming
 │   ├── rag/                # Chunking, embeddings (sentence-transformers), vector/BM25/hybrid search
