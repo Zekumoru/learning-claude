@@ -13,12 +13,13 @@ from anthropic.types import (
     Message,
     ToolUnionParam,
     ToolResultBlockParam,
+    ThinkingConfigParam,
 )
 from anthropic.lib.streaming import MessageStream, MessageStreamManager
 import json
 
 model: ModelParam = "claude-sonnet-4-6"
-max_tokens = 1024
+max_tokens = 4096
 
 PRICING_PER_MILLION: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
@@ -86,6 +87,7 @@ def chat(
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
     tools: list[ToolUnionParam] | None = None,
+    thinking: ThinkingConfigParam | None = None,
     output_format: None = None,
 ) -> Message: ...
 
@@ -98,6 +100,7 @@ def chat(
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
     tools: list[ToolUnionParam] | None = None,
+    thinking: ThinkingConfigParam | None = None,
     output_format: type[TOutput],
 ) -> TOutput: ...
 
@@ -109,6 +112,7 @@ def chat(
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
     tools: list[ToolUnionParam] | None = None,
+    thinking: ThinkingConfigParam | None = None,
     output_format: type[TOutput] | None = None,
 ) -> Message | TOutput:
     params: MessageCreateParams = {
@@ -128,6 +132,9 @@ def chat(
 
     if tools is not None:
         params["tools"] = tools
+
+    if thinking is not None:
+        params["thinking"] = thinking
 
     if output_format is not None:
         response = client.messages.parse(
