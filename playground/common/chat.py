@@ -14,6 +14,9 @@ from anthropic.types import (
     ToolUnionParam,
     ToolResultBlockParam,
     ThinkingConfigParam,
+    ThinkingBlock,
+    RedactedThinkingBlock,
+    TextBlock,
 )
 from anthropic.lib.streaming import MessageStream, MessageStreamManager
 import json
@@ -218,21 +221,35 @@ def run_conversation(
     messages: list[MessageParam],
     tools: list[ToolUnionParam] | None = None,
     run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
+    thinking: ThinkingConfigParam | None = None,
     verbose: bool = False,
 ) -> None:
     while True:
-        response = chat(messages, tools=tools)
+        response = chat(messages, tools=tools, thinking=thinking)
         if verbose:
             print(response.model_dump_json(indent=2) + "\n")
 
         add_assistant_message(messages, response)
+        print()
         print_usage(response)
-        print("\n")
 
-        text = text_from_message(response)
+        has_thinking = any(
+            isinstance(block, (ThinkingBlock, RedactedThinkingBlock))
+            for block in response.content
+        )
 
-        if text.strip() != "":
-            print(text + "\n")
+        for block in response.content:
+            match block:
+                case ThinkingBlock():
+                    print(f"\n\033[36m[Thinking]\033[0m\n{block.thinking}")
+                case RedactedThinkingBlock():
+                    print(
+                        f"\n\033[31m[Redacted]\033[0m\n(encrypted, {len(block.data)} chars)"
+                    )
+                case TextBlock():
+                    if block.text.strip():
+                        prefix = "\033[32m[Response]\033[0m\n" if has_thinking else ""
+                        print(f"\n{prefix}{block.text}")
 
         if response.stop_reason == "max_tokens":
             print("Error: max_tokens reached\n")
