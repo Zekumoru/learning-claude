@@ -13,8 +13,6 @@ import plistlib
 import shlex
 import subprocess
 
-from anthropic.types import ToolParam
-
 set_reminder_schema = ToolParam(
     {
         "name": "set_reminder",

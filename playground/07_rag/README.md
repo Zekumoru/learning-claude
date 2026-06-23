@@ -14,11 +14,15 @@ RAG lets an LLM answer questions about documents it hasn't seen during training.
 
 ## Files
 
-- `chunks.py` — text chunking strategies (by character count, by markdown section)
-- `embeddings.py` — sentence-transformers embedding generation (`all-MiniLM-L6-v2`, runs locally)
-- `search.py` — `SearchIndex` protocol, `VectorIndex` for semantic search, `BM25Index` for lexical search, `Retriever` for hybrid search via reciprocal rank fusion
-- `main.py` — ties it all together: loads a report, chunks it, and runs all three search types
+- `main.py` — standalone test script: loads `report.md`, chunks it, and runs all three search types side by side
+- `chatbot.py` — interactive RAG chatbot with tools (`get_file_info`, `rag_search`, text editor); the model decides whether to read a file directly or search it via RAG based on file size
 - `report.md` — sample document to search against
+
+RAG infrastructure and tools live in `common/` (shared across exercises):
+
+- `common/rag/` — chunking, embeddings (sentence-transformers `all-MiniLM-L6-v2`), `VectorIndex`, `BM25Index`, `Retriever`
+- `common/tools/rag_search.py` — RAG search tool with on-demand indexing and caching
+- `common/tools/get_file_info.py` — file metadata tool (line count, char count, size)
 
 ## Concepts Learned
 

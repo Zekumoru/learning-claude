@@ -1,6 +1,6 @@
 from anthropic.types import MessageParam
 from ..common.chat import add_user_message, run_conversation_stream
-from .tools import tools, run_tool
+from ..common.tools import tools, run_tool
 
 system = """\
 You have access to tools for reading and searching files.

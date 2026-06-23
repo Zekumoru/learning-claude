@@ -1,7 +1,6 @@
 from pathlib import Path
 from anthropic.types import ToolParam
-from ..chunks import chunk_by_section
-from ..search import VectorIndex, BM25Index, Retriever
+from ..rag import chunk_by_section, VectorIndex, BM25Index, Retriever
 
 rag_search_schema: ToolParam = {
     "name": "rag_search",

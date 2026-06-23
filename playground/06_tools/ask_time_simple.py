@@ -5,7 +5,7 @@ from ..common.chat import (
     max_tokens,
     add_user_message,
 )
-from .tools import get_current_datetime, get_current_datetime_schema
+from ..common.tools import get_current_datetime, get_current_datetime_schema
 from typing import cast, Any
 import sys
 

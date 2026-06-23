@@ -14,8 +14,12 @@ playground/          # Course exercises and Agent SDK experiments
 ├── 03_streaming/       # Streaming and structured data
 ├── 04_evaluation/      # Evaluation workflow, dataset generation, HTML report
 ├── 05_prompt_engineering/  # PromptEvaluator class: dataset generation, concurrent grading, HTML report
-├── 06_tools/           # Tool use: custom tools, text editor (Anthropic-defined), web search (server-side), streaming chatbot
-├── common/             # Shared utilities (e.g. chat helper)
+├── 06_tools/           # Tool use chatbots (imports tools from common/)
+├── 07_rag/             # RAG pipeline: chunking, search, and RAG-powered chatbot
+├── common/             # Shared utilities, tools, and RAG infrastructure
+│   ├── chat.py             # Anthropic client, conversation loops, streaming
+│   ├── rag/                # Chunking, embeddings (sentence-transformers), vector/BM25/hybrid search
+│   └── tools/              # All tool definitions + unified run_tool handler
 ├── agent.ts            # TypeScript Claude Agent SDK experiment (pnpm start-agent)
 ├── agent.py            # Python Claude Agent SDK experiment (uv run playground/agent.py)
 └── utils.ts

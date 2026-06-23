@@ -1,6 +1,5 @@
 from pathlib import Path
-from .chunks import chunk_by_section
-from .search import Retriever, VectorIndex, BM25Index
+from ..common.rag import chunk_by_section, VectorIndex, BM25Index, Retriever
 
 report_path = Path(__file__).parent / "report.md"
 
