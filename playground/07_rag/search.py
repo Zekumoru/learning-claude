@@ -20,12 +20,12 @@ class VectorIndex(SearchIndex):
         self.metadata: list[dict[str, str]] = []
 
     def add_document(self, document: dict[str, Any]) -> None:
-        embedding = generate_embedding(document["content"], input_type="document")
+        embedding = generate_embedding(document["content"])
         self.vectors.append(np.array(embedding))
         self.metadata.append(document)
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[dict[str, Any], float]]:
-        query_embedding = generate_embedding(query, input_type="query")
+        query_embedding = generate_embedding(query)
         query_vector = np.array(query_embedding)
         distances: list[tuple[int, float]] = []
 

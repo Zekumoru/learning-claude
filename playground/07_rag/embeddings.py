@@ -1,38 +1,26 @@
-from dotenv import load_dotenv
+from typing import overload
+from sentence_transformers import SentenceTransformer
 
-load_dotenv()
-
-from voyageai.client import Client as VoyageClient
-from typing import overload, Literal
-
-InputType = Literal["query", "document"]
-
-client = VoyageClient()
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
 @overload
 def generate_embedding(
     text: str,
-    model: str = "voyage-3-large",
-    input_type: InputType | None = "query",
-) -> list[float] | list[int]: ...
+) -> list[float]: ...
 
 
 @overload
 def generate_embedding(
     text: list[str],
-    model: str = "voyage-3-large",
-    input_type: InputType | None = "query",
-) -> list[list[float]] | list[list[int]]: ...
+) -> list[list[float]]: ...
 
 
 def generate_embedding(
     text: str | list[str],
-    model: str = "voyage-3-large",
-    input_type: InputType | None = "query",
-) -> list[float] | list[int] | list[list[float]] | list[list[int]]:
+) -> list[float] | list[list[float]]:
     texts = [text] if isinstance(text, str) else text
-    result = client.embed(texts, model=model, input_type=input_type)
+    embeddings = model.encode(texts).tolist()
     if isinstance(text, str):
-        return result.embeddings[0]
-    return result.embeddings
+        return embeddings[0]
+    return embeddings
