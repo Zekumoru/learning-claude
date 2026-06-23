@@ -310,12 +310,13 @@ def _handle_stream_event(
 
 def run_conversation_stream(
     messages: list[MessageParam],
+    system: str | None = None,
     tools: list[ToolUnionParam] | None = None,
     run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
     verbose: bool = False,
 ) -> None:
     while True:
-        with chat_stream(messages, tools=tools) as stream:
+        with chat_stream(messages, system=system, tools=tools) as stream:
             _handle_stream_event(stream, tools=tools)
 
             response = stream.get_final_message()
