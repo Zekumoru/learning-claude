@@ -161,6 +161,7 @@ def chat_stream(
     system: str | None = None,
     temperature: float | None = None,
     stop_sequences: list[str] | None = None,
+    thinking: ThinkingConfigParam | None = None,
     tools: list[ToolUnionParam] | None = None,
 ) -> MessageStreamManager:
     params: MessageCreateParams = {
@@ -180,6 +181,9 @@ def chat_stream(
 
     if tools is not None:
         params["tools"] = tools
+
+    if thinking is not None:
+        params["thinking"] = thinking
 
     return client.messages.stream(**cast(Any, params))
 
@@ -289,6 +293,7 @@ def _handle_stream_event(
     tool_inputs: dict[int, str] = {}
     eager_indices: set[int] = set()
     printed_text = False
+    printed_thinking = False
     eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
 
     for event in stream:
@@ -313,6 +318,12 @@ def _handle_stream_event(
                             f"{prefix}\033[36mUsing tool `{tool_name}`...\033[0m",
                             flush=True,
                         )
+                elif event.content_block.type == "thinking":
+                    printed_thinking = True
+                    print(f"\n\033[36m[Thinking]\033[0m", flush=True)
+                elif event.content_block.type == "text":
+                    if printed_thinking:
+                        print(f"\n\n\033[32m[Response]\033[0m", flush=True)
             case "content_block_delta":
                 if event.delta.type == "text_delta":
                     printed_text = True
@@ -322,6 +333,8 @@ def _handle_stream_event(
                         tool_inputs[event.index] += event.delta.partial_json
                         if event.index in eager_indices:
                             print(event.delta.partial_json, end="", flush=True)
+                elif event.delta.type == "thinking_delta":
+                    print(event.delta.thinking, end="", flush=True)
             case "content_block_stop":
                 if event.index in tool_inputs:
                     raw_input = tool_inputs[event.index]
@@ -337,10 +350,13 @@ def run_conversation_stream(
     system: str | None = None,
     tools: list[ToolUnionParam] | None = None,
     run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
+    thinking: ThinkingConfigParam | None = None,
     verbose: bool = False,
 ) -> None:
     while True:
-        with chat_stream(messages, system=system, tools=tools) as stream:
+        with chat_stream(
+            messages, system=system, tools=tools, thinking=thinking
+        ) as stream:
             _handle_stream_event(stream, tools=tools)
 
             response = stream.get_final_message()
@@ -348,22 +364,22 @@ def run_conversation_stream(
         is_tool_use = response.stop_reason in ("tool_use", "pause_turn")
 
         if not is_tool_use:
-            print("\n")
-        else:
             print()
 
         if verbose:
             print(response.model_dump_json(indent=2) + "\n")
 
         add_assistant_message(messages, response)
+        print()
         print_usage(response)
-        print("\n")
 
         if response.stop_reason == "max_tokens":
             print("Error: max_tokens reached\n")
 
         if not is_tool_use:
             break
+
+        print()
 
         if response.stop_reason == "pause_turn":
             messages = [

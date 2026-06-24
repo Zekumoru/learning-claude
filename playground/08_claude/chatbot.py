@@ -1,5 +1,5 @@
 from anthropic.types import MessageParam
-from ..common.chat import run_conversation, add_user_message
+from ..common.chat import run_conversation_stream, add_user_message
 
 messages: list[MessageParam] = []
 
@@ -12,5 +12,5 @@ while True:
         break
 
     add_user_message(messages, user_input)
-    run_conversation(messages, thinking={"type": "adaptive"})
+    run_conversation_stream(messages, thinking={"type": "adaptive"})
     print()
