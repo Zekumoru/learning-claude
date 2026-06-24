@@ -33,6 +33,233 @@ PRICING_PER_MILLION: dict[str, dict[str, float]] = {
 client = Anthropic()
 
 
+RESET = "\033[0m"
+YELLOW = "\033[33m"
+GREEN = "\033[32m"
+CYAN = "\033[36m"
+RED = "\033[31m"
+MAGENTA = "\033[35m"
+
+
+def color(text: str, ansi_color: str) -> str:
+    return f"{ansi_color}{text}{RESET}"
+
+
+class ConsoleWriter:
+    """Small terminal-layout helper.
+
+    The important idea is that call sites should say *what* they are printing
+    (line, heading, streamed text), while this class decides how to keep the
+    terminal output readable.
+    """
+
+    def __init__(self) -> None:
+        self._has_written = False
+        self._line_open = False
+
+    def write(self, text: str) -> None:
+        if not text:
+            return
+
+        print(text, end="", flush=True)
+        self._has_written = True
+        self._line_open = not text.endswith("\n")
+
+    def newline(self, count: int = 1) -> None:
+        for _ in range(count):
+            print(flush=True)
+
+        if count > 0:
+            self._has_written = True
+            self._line_open = False
+
+    def gap(self, blank_lines: int = 1, *, include_initial: bool = True) -> None:
+        """Move to the next section with a controlled number of blank lines.
+
+        `blank_lines=1` means "leave one visual blank line before the next
+        section". If streamed text is currently open, the first newline closes
+        that line and the extra newline creates the visual gap.
+        """
+
+        if blank_lines < 0:
+            raise ValueError("blank_lines must be >= 0")
+
+        if not self._has_written:
+            if include_initial and blank_lines > 0:
+                self.newline(blank_lines)
+            return
+
+        if self._line_open:
+            self.newline()
+
+        self.newline(blank_lines)
+
+    def line(
+        self,
+        text: str = "",
+        *,
+        before: int = 0,
+        include_initial_gap: bool = True,
+    ) -> None:
+        self.gap(before, include_initial=include_initial_gap)
+        print(text, flush=True)
+        self._has_written = True
+        self._line_open = False
+
+    def heading(
+        self,
+        label: str,
+        ansi_color: str,
+        *,
+        before: int = 1,
+        include_initial_gap: bool = True,
+    ) -> None:
+        self.line(
+            color(label, ansi_color),
+            before=before,
+            include_initial_gap=include_initial_gap,
+        )
+
+
+class MessageConsoleRenderer:
+    def __init__(self, writer: ConsoleWriter | None = None) -> None:
+        self.writer = writer or ConsoleWriter()
+
+    def verbose_json(self, value: Any) -> None:
+        if hasattr(value, "model_dump_json"):
+            rendered = value.model_dump_json(indent=2)
+        else:
+            rendered = json.dumps(value, indent=2)
+
+        self.writer.line(rendered)
+        self.writer.newline()
+
+    def usage(self, message: Message, *, before: int = 1) -> None:
+        self.writer.line(format_usage(message), before=before)
+
+    def max_tokens_error(self) -> None:
+        self.writer.line("Error: max_tokens reached")
+        self.writer.newline()
+
+    def message(self, message: Message) -> None:
+        self.usage(message)
+
+        has_thinking = any(
+            isinstance(block, (ThinkingBlock, RedactedThinkingBlock))
+            for block in message.content
+        )
+
+        for block in message.content:
+            match block:
+                case ThinkingBlock():
+                    self.writer.heading("[Thinking]", CYAN)
+                    self.writer.line(block.thinking)
+                case RedactedThinkingBlock():
+                    self.writer.heading("[Redacted]", RED)
+                    self.writer.line(f"(encrypted, {len(block.data)} chars)")
+                case TextBlock():
+                    self.text(block.text, show_heading=has_thinking)
+
+    def text(self, text: str, *, show_heading: bool) -> None:
+        if not text.strip():
+            return
+
+        if show_heading:
+            self.writer.heading("[Response]", GREEN)
+            self.writer.line(text)
+        else:
+            self.writer.line(text, before=1)
+
+
+class StreamConsoleRenderer:
+    def __init__(
+        self,
+        tools: list[ToolUnionParam] | None = None,
+        writer: ConsoleWriter | None = None,
+    ) -> None:
+        self.writer = writer or ConsoleWriter()
+        self.tool_inputs: dict[int, str] = {}
+        self.eager_indices: set[int] = set()
+        self.printed_text = False
+        self.printed_thinking = False
+        self.eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
+
+    def render(self, stream: MessageStream[Any]) -> None:
+        for event in stream:
+            self.handle(event)
+
+    def handle(self, event: Any) -> None:
+        match event.type:
+            case "content_block_start":
+                self._handle_content_block_start(event.index, event.content_block)
+            case "content_block_delta":
+                self._handle_content_block_delta(event.index, event.delta)
+            case "content_block_stop":
+                self._handle_content_block_stop(event.index)
+
+    def finish_inline_output(self) -> None:
+        self.writer.gap(0)
+
+    def _handle_content_block_start(self, index: int, content_block: Any) -> None:
+        match content_block.type:
+            case "server_tool_use":
+                self._status("Searching the web...", MAGENTA)
+            case "tool_use":
+                self._start_tool_use(index, content_block.name)
+            case "thinking":
+                self.printed_thinking = True
+                self.writer.heading("[Thinking]", CYAN)
+            case "text":
+                if self.printed_thinking:
+                    self.writer.heading("[Response]", GREEN)
+
+    def _handle_content_block_delta(self, index: int, delta: Any) -> None:
+        match delta.type:
+            case "text_delta":
+                self.printed_text = True
+                self.writer.write(delta.text)
+            case "input_json_delta":
+                self._append_tool_input(index, delta.partial_json)
+            case "thinking_delta":
+                self.writer.write(delta.thinking)
+
+    def _handle_content_block_stop(self, index: int) -> None:
+        if index not in self.tool_inputs:
+            return
+
+        raw_input = self.tool_inputs[index]
+        if not raw_input:
+            return
+
+        try:
+            json.loads(raw_input)
+        except json.JSONDecodeError:
+            self.writer.line("Error: Received invalid JSON after stream", before=1)
+
+    def _start_tool_use(self, index: int, tool_name: str) -> None:
+        self.tool_inputs[index] = ""
+
+        if self.eager_by_tool_name.get(tool_name, False):
+            self.eager_indices.add(index)
+            self._status(f"Generating tool use `{tool_name}` arguments...", CYAN)
+        else:
+            self._status(f"Using tool `{tool_name}`...", CYAN)
+
+    def _append_tool_input(self, index: int, partial_json: str) -> None:
+        if index not in self.tool_inputs:
+            return
+
+        self.tool_inputs[index] += partial_json
+
+        if index in self.eager_indices:
+            self.writer.write(partial_json)
+
+    def _status(self, message: str, ansi_color: str) -> None:
+        self.writer.line(
+            color(message, ansi_color), before=1 if self.printed_text else 0
+        )
+
+
 def add_user_message(
     messages: list[MessageParam], message: str | Message | list[ToolResultBlockParam]
 ) -> None:
@@ -58,7 +285,7 @@ def text_from_message(message: Message) -> str:
     return "\n".join(blocks)
 
 
-def print_usage(message: Message) -> None:
+def format_usage(message: Message) -> str:
     usage = message.usage
     input_tokens = usage.input_tokens
     output_tokens = usage.output_tokens
@@ -74,9 +301,14 @@ def print_usage(message: Message) -> None:
     else:
         cost_str = ""
 
-    print(
-        f"\033[33m[{input_tokens} in + {output_tokens} out = {total_tokens} tokens{cost_str}]\033[0m"
+    return color(
+        f"[{input_tokens} in + {output_tokens} out = {total_tokens} tokens{cost_str}]",
+        YELLOW,
     )
+
+
+def print_usage(message: Message) -> None:
+    print(format_usage(message))
 
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
@@ -228,45 +460,29 @@ def run_conversation(
     thinking: ThinkingConfigParam | None = None,
     verbose: bool = False,
 ) -> None:
+    renderer = MessageConsoleRenderer()
+
     while True:
         response = chat(messages, tools=tools, thinking=thinking)
+
         if verbose:
-            print(response.model_dump_json(indent=2) + "\n")
+            renderer.verbose_json(response)
 
         add_assistant_message(messages, response)
-        print()
-        print_usage(response)
-
-        has_thinking = any(
-            isinstance(block, (ThinkingBlock, RedactedThinkingBlock))
-            for block in response.content
-        )
-
-        for block in response.content:
-            match block:
-                case ThinkingBlock():
-                    print(f"\n\033[36m[Thinking]\033[0m\n{block.thinking}")
-                case RedactedThinkingBlock():
-                    print(
-                        f"\n\033[31m[Redacted]\033[0m\n(encrypted, {len(block.data)} chars)"
-                    )
-                case TextBlock():
-                    if block.text.strip():
-                        prefix = "\033[32m[Response]\033[0m\n" if has_thinking else ""
-                        print(f"\n{prefix}{block.text}")
+        renderer.message(response)
 
         if response.stop_reason == "max_tokens":
-            print("Error: max_tokens reached\n")
+            renderer.max_tokens_error()
 
         if response.stop_reason != "tool_use":
             break
 
         tool_results = run_tools(response, run_tool_callback)
-        if verbose:
-            print(json.dumps(tool_results, indent=2) + "\n")
-        add_user_message(messages, tool_results)
 
-    return
+        if verbose:
+            renderer.verbose_json(tool_results)
+
+        add_user_message(messages, tool_results)
 
 
 def _get_eager_input_streaming_by_tool_name(
@@ -289,60 +505,11 @@ def _get_eager_input_streaming_by_tool_name(
 def _handle_stream_event(
     stream: MessageStream[Any],
     tools: list[ToolUnionParam] | None = None,
-) -> None:
-    tool_inputs: dict[int, str] = {}
-    eager_indices: set[int] = set()
-    printed_text = False
-    printed_thinking = False
-    eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
-
-    for event in stream:
-        match event.type:
-            case "content_block_start":
-                if event.content_block.type == "server_tool_use":
-                    prefix = "\n" if printed_text else ""
-                    print(f"{prefix}\033[35mSearching the web...\033[0m", flush=True)
-                elif event.content_block.type == "tool_use":
-                    tool_inputs[event.index] = ""
-                    tool_name = event.content_block.name
-                    prefix = "\n" if printed_text else ""
-                    if eager_by_tool_name.get(tool_name, False):
-                        eager_indices.add(event.index)
-                        print(
-                            f"{prefix}\033[36mGenerating tool use `{tool_name}` arguments...\033[0m\n",
-                            end="",
-                            flush=True,
-                        )
-                    else:
-                        print(
-                            f"{prefix}\033[36mUsing tool `{tool_name}`...\033[0m",
-                            flush=True,
-                        )
-                elif event.content_block.type == "thinking":
-                    printed_thinking = True
-                    print(f"\n\033[36m[Thinking]\033[0m", flush=True)
-                elif event.content_block.type == "text":
-                    if printed_thinking:
-                        print(f"\n\n\033[32m[Response]\033[0m", flush=True)
-            case "content_block_delta":
-                if event.delta.type == "text_delta":
-                    printed_text = True
-                    print(event.delta.text, end="", flush=True)
-                elif event.delta.type == "input_json_delta":
-                    if event.index in tool_inputs:
-                        tool_inputs[event.index] += event.delta.partial_json
-                        if event.index in eager_indices:
-                            print(event.delta.partial_json, end="", flush=True)
-                elif event.delta.type == "thinking_delta":
-                    print(event.delta.thinking, end="", flush=True)
-            case "content_block_stop":
-                if event.index in tool_inputs:
-                    raw_input = tool_inputs[event.index]
-                    try:
-                        if raw_input:
-                            json.loads(raw_input)
-                    except json.JSONDecodeError:
-                        print("Error: Received invalid JSON after stream")
+    writer: ConsoleWriter | None = None,
+) -> StreamConsoleRenderer:
+    renderer = StreamConsoleRenderer(tools=tools, writer=writer)
+    renderer.render(stream)
+    return renderer
 
 
 def run_conversation_stream(
@@ -353,33 +520,34 @@ def run_conversation_stream(
     thinking: ThinkingConfigParam | None = None,
     verbose: bool = False,
 ) -> None:
+    writer = ConsoleWriter()
+    message_renderer = MessageConsoleRenderer(writer)
+
     while True:
         with chat_stream(
             messages, system=system, tools=tools, thinking=thinking
         ) as stream:
-            _handle_stream_event(stream, tools=tools)
-
+            stream_renderer = _handle_stream_event(stream, tools=tools, writer=writer)
             response = stream.get_final_message()
 
         is_tool_use = response.stop_reason in ("tool_use", "pause_turn")
 
         if not is_tool_use:
-            print()
+            stream_renderer.finish_inline_output()
 
         if verbose:
-            print(response.model_dump_json(indent=2) + "\n")
+            message_renderer.verbose_json(response)
 
         add_assistant_message(messages, response)
-        print()
-        print_usage(response)
+        message_renderer.usage(response)
 
         if response.stop_reason == "max_tokens":
-            print("Error: max_tokens reached\n")
+            message_renderer.max_tokens_error()
 
         if not is_tool_use:
             break
 
-        print()
+        writer.gap(1)
 
         if response.stop_reason == "pause_turn":
             messages = [
@@ -391,6 +559,6 @@ def run_conversation_stream(
         tool_results = run_tools(response, run_tool_callback)
 
         if verbose:
-            print(json.dumps(tool_results, indent=2) + "\n")
+            message_renderer.verbose_json(tool_results)
 
         add_user_message(messages, tool_results)
