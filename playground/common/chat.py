@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from typing import TypeVar, overload, cast, Any, Mapping
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pydantic import BaseModel
 from anthropic import Anthropic
 from anthropic.types import (
@@ -13,6 +13,7 @@ from anthropic.types import (
     Message,
     ToolUnionParam,
     ToolResultBlockParam,
+    ContentBlockParam,
     ThinkingConfigParam,
     ThinkingBlock,
     RedactedThinkingBlock,
@@ -261,7 +262,7 @@ class StreamConsoleRenderer:
 
 
 def add_user_message(
-    messages: list[MessageParam], message: str | Message | list[ToolResultBlockParam]
+    messages: list[MessageParam], message: str | Message | Sequence[ContentBlockParam]
 ) -> None:
     messages.append(
         {

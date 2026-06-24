@@ -25,3 +25,5 @@ dataset*.json
 results*.json
 results*.html
 articles/
+# Ignore test images in section 8
+**/08_claude/assets/
