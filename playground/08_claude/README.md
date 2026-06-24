@@ -7,6 +7,7 @@ Exercises exploring Claude's advanced API features: extended thinking, vision, P
 - `extended_thinking.py` — enables thinking, prints both the reasoning and final answer, handles redacted thinking blocks
 - `vision.py` — sends a base64-encoded image with a text prompt, prints Claude's analysis
 - `pdf.py` — sends a base64-encoded PDF with a text prompt, prints Claude's summary
+- `citations.py` — enables citations on a PDF, prints inline markers and a references section
 
 ## Concepts Learned
 
@@ -156,3 +157,51 @@ add_user_message(messages, [
 #### What Claude Can Extract
 
 Beyond plain text, Claude can analyze images, charts, tables, and document structure embedded in PDFs — making it a single tool for full document understanding.
+
+### Citations
+
+Citations let Claude reference specific parts of source documents, creating a verifiable trail from response back to source material.
+
+#### Enabling Citations
+
+Add `title` and `citations` fields to a document block:
+
+```python
+{
+    "type": "document",
+    "source": {
+        "type": "base64",
+        "media_type": "application/pdf",
+        "data": file_bytes,
+    },
+    "title": "earth.pdf",
+    "citations": {"enabled": True},
+}
+```
+
+Works with both PDFs and plain text (`"media_type": "text/plain"`).
+
+#### Response Structure
+
+With citations enabled, `response.content` contains multiple `TextBlock`s — each with a `text` field and a `citations` list. The response is broken into small fragments, each citing the specific source passage it draws from.
+
+Each citation contains:
+
+- **`cited_text`** — the exact text from the source document
+- **`document_index`** — which document (when multiple are provided)
+- **`document_title`** — the title you assigned
+
+Location fields depend on the source type:
+
+| Source | Location type | Fields |
+|---|---|---|
+| PDF | `CitationPageLocation` | `start_page_number`, `end_page_number` |
+| Plain text | `CitationCharLocation` | `start_char_index`, `end_char_index` |
+
+#### Formatting Cited Text
+
+Text extracted from PDFs contains line breaks from the page layout. Collapse whitespace before displaying:
+
+```python
+cited_text = " ".join(citation.cited_text.split())
+```
