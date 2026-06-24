@@ -1,25 +1,46 @@
+from __future__ import annotations
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from typing import TypeVar, overload, cast, Any, Mapping
+from typing import Protocol, TypeGuard, TypeVar, overload, cast, Mapping
 from collections.abc import Callable, Sequence
 from pydantic import BaseModel
-from anthropic import Anthropic
+from anthropic import Anthropic, Omit, omit
 from anthropic.types import (
     ModelParam,
     MessageParam,
-    MessageCreateParams,
     Message,
     ToolUnionParam,
     ToolResultBlockParam,
     ContentBlockParam,
+    DocumentBlockParam,
     ThinkingConfigParam,
+    ContentBlock,
+    RawContentBlockDelta,
+    RawContentBlockStartEvent,
+    RawContentBlockDeltaEvent,
+    RawContentBlockStopEvent,
+    ServerToolUseBlock,
+    ToolUseBlock,
     ThinkingBlock,
     RedactedThinkingBlock,
     TextBlock,
+    TextDelta,
+    InputJSONDelta,
+    ThinkingDelta,
+    CitationsDelta,
+    SignatureDelta,
+    TextCitation,
+    CitationPageLocation,
+    CitationCharLocation,
 )
-from anthropic.lib.streaming import MessageStream, MessageStreamManager
+from anthropic.lib.streaming import (
+    MessageStream,
+    MessageStreamManager,
+    ParsedMessageStreamEvent,
+)
 import json
 
 model: ModelParam = "claude-sonnet-4-6"
@@ -44,6 +65,21 @@ MAGENTA = "\033[35m"
 
 def color(text: str, ansi_color: str) -> str:
     return f"{ansi_color}{text}{RESET}"
+
+
+class SupportsModelDumpJson(Protocol):
+    def model_dump_json(self, *, indent: int | None = None) -> str: ...
+
+
+def supports_model_dump_json(value: object) -> TypeGuard[SupportsModelDumpJson]:
+    return hasattr(value, "model_dump_json")
+
+
+TOmitValue = TypeVar("TOmitValue")
+
+
+def omit_none(value: TOmitValue | None) -> TOmitValue | Omit:
+    return omit if value is None else value
 
 
 class ConsoleWriter:
@@ -122,12 +158,37 @@ class ConsoleWriter:
         )
 
 
+def print_citations(citations: list[TextCitation], writer: ConsoleWriter) -> None:
+    if not citations:
+        return
+
+    writer.line(color("--- References ---", YELLOW), before=1)
+
+    for i, citation in enumerate(citations, 1):
+        cited_text = " ".join(citation.cited_text.split())[:80]
+
+        if len(citation.cited_text) > 80:
+            cited_text += "..."
+
+        match citation:
+            case CitationPageLocation():
+                pages = f"p.{citation.start_page_number}"
+                if citation.end_page_number != citation.start_page_number:
+                    pages = f"p.{citation.start_page_number}-{citation.end_page_number}"
+                writer.line(f'[{i}] ({pages}) "{cited_text}"')
+            case CitationCharLocation():
+                writer.line(
+                    f"[{i}] (char {citation.start_char_index}-{citation.end_char_index})"
+                    f' "{cited_text}."'
+                )
+
+
 class MessageConsoleRenderer:
     def __init__(self, writer: ConsoleWriter | None = None) -> None:
         self.writer = writer or ConsoleWriter()
 
-    def verbose_json(self, value: Any) -> None:
-        if hasattr(value, "model_dump_json"):
+    def verbose_json(self, value: object) -> None:
+        if supports_model_dump_json(value):
             rendered = value.model_dump_json(indent=2)
         else:
             rendered = json.dumps(value, indent=2)
@@ -150,6 +211,9 @@ class MessageConsoleRenderer:
             for block in message.content
         )
 
+        citations: list[TextCitation] = []
+        printed_response_heading = False
+
         for block in message.content:
             match block:
                 case ThinkingBlock():
@@ -159,17 +223,27 @@ class MessageConsoleRenderer:
                     self.writer.heading("[Redacted]", RED)
                     self.writer.line(f"(encrypted, {len(block.data)} chars)")
                 case TextBlock():
-                    self.text(block.text, show_heading=has_thinking)
+                    if not block.text.strip():
+                        continue
 
-    def text(self, text: str, *, show_heading: bool) -> None:
-        if not text.strip():
-            return
+                    if has_thinking and not printed_response_heading:
+                        self.writer.heading("[Response]", GREEN)
+                        printed_response_heading = True
 
-        if show_heading:
-            self.writer.heading("[Response]", GREEN)
-            self.writer.line(text)
-        else:
-            self.writer.line(text, before=1)
+                    if not has_thinking and not printed_response_heading:
+                        self.writer.gap(1)
+                        printed_response_heading = True
+
+                    if block.citations:
+                        for citation in block.citations:
+                            if citation not in citations:
+                                citations.append(citation)
+                            index = citations.index(citation) + 1
+                            block.text += f"[{index}]"
+
+                    self.writer.write(block.text)
+
+        print_citations(citations, self.writer)
 
 
 class StreamConsoleRenderer:
@@ -184,45 +258,59 @@ class StreamConsoleRenderer:
         self.printed_text = False
         self.printed_thinking = False
         self.eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
+        self.citations: list[TextCitation] = []
 
-    def render(self, stream: MessageStream[Any]) -> None:
+    def render(self, stream: MessageStream[None]) -> None:
         for event in stream:
             self.handle(event)
 
-    def handle(self, event: Any) -> None:
-        match event.type:
-            case "content_block_start":
+    def handle(self, event: ParsedMessageStreamEvent[None]) -> None:
+        match event:
+            case RawContentBlockStartEvent():
                 self._handle_content_block_start(event.index, event.content_block)
-            case "content_block_delta":
+            case RawContentBlockDeltaEvent():
                 self._handle_content_block_delta(event.index, event.delta)
-            case "content_block_stop":
+            case RawContentBlockStopEvent():
                 self._handle_content_block_stop(event.index)
 
     def finish_inline_output(self) -> None:
         self.writer.gap(0)
+        print_citations(self.citations, self.writer)
 
-    def _handle_content_block_start(self, index: int, content_block: Any) -> None:
-        match content_block.type:
-            case "server_tool_use":
+    def _handle_content_block_start(
+        self, index: int, content_block: ContentBlock
+    ) -> None:
+        match content_block:
+            case ServerToolUseBlock():
                 self._status("Searching the web...", MAGENTA)
-            case "tool_use":
+            case ToolUseBlock():
                 self._start_tool_use(index, content_block.name)
-            case "thinking":
+            case ThinkingBlock():
                 self.printed_thinking = True
                 self.writer.heading("[Thinking]", CYAN)
-            case "text":
-                if self.printed_thinking:
+            case TextBlock():
+                if self.printed_thinking and not self.printed_text:
                     self.writer.heading("[Response]", GREEN)
 
-    def _handle_content_block_delta(self, index: int, delta: Any) -> None:
-        match delta.type:
-            case "text_delta":
+    def _handle_content_block_delta(
+        self, index: int, delta: RawContentBlockDelta
+    ) -> None:
+        match delta:
+            case TextDelta():
                 self.printed_text = True
                 self.writer.write(delta.text)
-            case "input_json_delta":
+            case InputJSONDelta():
                 self._append_tool_input(index, delta.partial_json)
-            case "thinking_delta":
+            case ThinkingDelta():
                 self.writer.write(delta.thinking)
+            case CitationsDelta():
+                citation = delta.citation
+                if citation not in self.citations:
+                    self.citations.append(citation)
+                citation_index = self.citations.index(citation) + 1
+                self.writer.write(f"[{citation_index}]")
+            case SignatureDelta():
+                return
 
     def _handle_content_block_stop(self, index: int) -> None:
         if index not in self.tool_inputs:
@@ -351,30 +439,17 @@ def chat(
     thinking: ThinkingConfigParam | None = None,
     output_format: type[TOutput] | None = None,
 ) -> Message | TOutput:
-    params: MessageCreateParams = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": messages,
-    }
-
-    if system is not None:
-        params["system"] = system
-
-    if temperature is not None:
-        params["temperature"] = temperature
-
-    if stop_sequences is not None:
-        params["stop_sequences"] = stop_sequences
-
-    if tools is not None:
-        params["tools"] = tools
-
-    if thinking is not None:
-        params["thinking"] = thinking
-
     if output_format is not None:
         response = client.messages.parse(
-            **cast(Any, params), output_format=output_format
+            model=model,
+            max_tokens=max_tokens,
+            messages=messages,
+            system=omit_none(system),
+            temperature=omit_none(temperature),
+            stop_sequences=omit_none(stop_sequences),
+            tools=omit_none(tools),
+            thinking=omit_none(thinking),
+            output_format=output_format,
         )
 
         parsed = response.parsed_output
@@ -384,8 +459,18 @@ def chat(
 
         return parsed
 
-    message = client.messages.create(**params)
-    return message
+    message = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=messages,
+        system=omit_none(system),
+        temperature=omit_none(temperature),
+        stop_sequences=omit_none(stop_sequences),
+        tools=omit_none(tools),
+        thinking=omit_none(thinking),
+    )
+
+    return cast(Message, message)
 
 
 def chat_stream(
@@ -396,36 +481,32 @@ def chat_stream(
     stop_sequences: list[str] | None = None,
     thinking: ThinkingConfigParam | None = None,
     tools: list[ToolUnionParam] | None = None,
-) -> MessageStreamManager:
-    params: MessageCreateParams = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": messages,
-    }
+) -> MessageStreamManager[None]:
+    return client.messages.stream(
+        model=model,
+        max_tokens=max_tokens,
+        messages=messages,
+        system=omit_none(system),
+        temperature=omit_none(temperature),
+        stop_sequences=omit_none(stop_sequences),
+        tools=omit_none(tools),
+        thinking=omit_none(thinking),
+    )
 
-    if system is not None:
-        params["system"] = system
 
-    if temperature is not None:
-        params["temperature"] = temperature
-
-    if stop_sequences is not None:
-        params["stop_sequences"] = stop_sequences
-
-    if tools is not None:
-        params["tools"] = tools
-
-    if thinking is not None:
-        params["thinking"] = thinking
-
-    return client.messages.stream(**cast(Any, params))
+def _has_document_blocks(blocks: list[object]) -> bool:
+    return any(
+        isinstance(b, dict) and b.get("type") == "document"
+        for b in blocks
+    )
 
 
 def run_tools(
-    message: Message, run_tool: Callable[[str, dict[str, Any]], Any] | None
-) -> list[ToolResultBlockParam]:
+    message: Message, run_tool: Callable[[str, dict[str, object]], object] | None
+) -> tuple[list[ToolResultBlockParam], list[DocumentBlockParam]]:
     tool_requests = [block for block in message.content if block.type == "tool_use"]
     tool_result_blocks: list[ToolResultBlockParam] = []
+    document_blocks: list[DocumentBlockParam] = []
 
     for tool_request in tool_requests:
         try:
@@ -435,18 +516,29 @@ def run_tools(
                 )
 
             tool_output = run_tool(tool_request.name, tool_request.input)
-            tool_result_block: ToolResultBlockParam = {
-                "type": "tool_result",
-                "tool_use_id": tool_request.id,
-                "content": (
-                    tool_output
-                    if isinstance(tool_output, list)
-                    else json.dumps(tool_output)
-                ),
-                "is_error": False,
-            }
+
+            if isinstance(tool_output, list) and _has_document_blocks(tool_output):
+                for block in tool_output:
+                    document_blocks.append(cast(DocumentBlockParam, block))
+                tool_result_block: ToolResultBlockParam = {
+                    "type": "tool_result",
+                    "tool_use_id": tool_request.id,
+                    "content": "Document loaded successfully.",
+                    "is_error": False,
+                }
+            else:
+                tool_result_block = {
+                    "type": "tool_result",
+                    "tool_use_id": tool_request.id,
+                    "content": (
+                        tool_output
+                        if isinstance(tool_output, list)
+                        else json.dumps(tool_output)
+                    ),
+                    "is_error": False,
+                }
         except Exception as e:
-            tool_result_block: ToolResultBlockParam = {
+            tool_result_block = {
                 "type": "tool_result",
                 "tool_use_id": tool_request.id,
                 "content": f"Error: {e}",
@@ -455,13 +547,13 @@ def run_tools(
 
         tool_result_blocks.append(tool_result_block)
 
-    return tool_result_blocks
+    return tool_result_blocks, document_blocks
 
 
 def run_conversation(
     messages: list[MessageParam],
     tools: list[ToolUnionParam] | None = None,
-    run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
+    run_tool_callback: Callable[[str, dict[str, object]], object] | None = None,
     thinking: ThinkingConfigParam | None = None,
     verbose: bool = False,
 ) -> None:
@@ -482,12 +574,12 @@ def run_conversation(
         if response.stop_reason != "tool_use":
             break
 
-        tool_results = run_tools(response, run_tool_callback)
+        tool_results, documents = run_tools(response, run_tool_callback)
 
         if verbose:
             renderer.verbose_json(tool_results)
 
-        add_user_message(messages, tool_results)
+        add_user_message(messages, [*tool_results, *documents])
 
 
 def _get_eager_input_streaming_by_tool_name(
@@ -508,7 +600,7 @@ def _get_eager_input_streaming_by_tool_name(
 
 
 def _handle_stream_event(
-    stream: MessageStream[Any],
+    stream: MessageStream[None],
     tools: list[ToolUnionParam] | None = None,
     writer: ConsoleWriter | None = None,
 ) -> StreamConsoleRenderer:
@@ -521,7 +613,7 @@ def run_conversation_stream(
     messages: list[MessageParam],
     system: str | None = None,
     tools: list[ToolUnionParam] | None = None,
-    run_tool_callback: Callable[[str, dict[str, Any]], Any] | None = None,
+    run_tool_callback: Callable[[str, dict[str, object]], object] | None = None,
     thinking: ThinkingConfigParam | None = None,
     verbose: bool = False,
 ) -> None:
@@ -561,9 +653,9 @@ def run_conversation_stream(
             ]
             continue
 
-        tool_results = run_tools(response, run_tool_callback)
+        tool_results, documents = run_tools(response, run_tool_callback)
 
         if verbose:
             message_renderer.verbose_json(tool_results)
 
-        add_user_message(messages, tool_results)
+        add_user_message(messages, [*tool_results, *documents])

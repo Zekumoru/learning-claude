@@ -69,7 +69,9 @@ def _image_block(media_type: ImageMediaType, data: str) -> ImageBlockParam:
     }
 
 
-def _document_block(media_type: DocumentMediaType, data: str) -> DocumentBlockParam:
+def _document_block(
+    media_type: DocumentMediaType, title: str, data: str
+) -> DocumentBlockParam:
     return {
         "type": "document",
         "source": {
@@ -77,6 +79,8 @@ def _document_block(media_type: DocumentMediaType, data: str) -> DocumentBlockPa
             "media_type": media_type,
             "data": data,
         },
+        "title": title,
+        "citations": {"enabled": True},
     }
 
 
@@ -95,7 +99,9 @@ def _build_media_block(file_path: Path, data: str) -> MediaBlock | dict[str, str
         return _image_block(SUPPORTED_IMAGE_EXTENSIONS[suffix], data)
 
     if suffix in SUPPORTED_DOCUMENT_EXTENSIONS:
-        return _document_block(SUPPORTED_DOCUMENT_EXTENSIONS[suffix], data)
+        return _document_block(
+            SUPPORTED_DOCUMENT_EXTENSIONS[suffix], file_path.name, data
+        )
 
     return _error(
         f"Unsupported media format '{suffix}'. "
@@ -114,7 +120,7 @@ def read_media(path: str, root: Path | None = None) -> ReadMediaResult:
     data = base64.standard_b64encode(file_path.read_bytes()).decode("utf-8")
     block = _build_media_block(file_path, data)
 
-    if isinstance(block, dict):
-        return cast(dict, block)
+    if "error" in block:
+        return cast(dict[str, str], block)
 
-    return [block]
+    return [cast(MediaBlock, block)]
