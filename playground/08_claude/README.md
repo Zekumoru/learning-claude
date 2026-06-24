@@ -6,6 +6,7 @@ Exercises exploring Claude's advanced API features: extended thinking, vision, P
 
 - `extended_thinking.py` — enables thinking, prints both the reasoning and final answer, handles redacted thinking blocks
 - `vision.py` — sends a base64-encoded image with a text prompt, prints Claude's analysis
+- `pdf.py` — sends a base64-encoded PDF with a text prompt, prints Claude's summary
 
 ## Concepts Learned
 
@@ -118,3 +119,40 @@ Each image counts as tokens based on its dimensions: `tokens = (width × height)
 #### Prompting Tips
 
 The same prompt engineering techniques that work for text apply to images — structured step-by-step instructions, one-shot examples, and breaking complex analysis into smaller steps all improve accuracy significantly over simple questions.
+
+### PDF Support
+
+Claude can read and analyze PDF files directly. The API shape is nearly identical to images — the differences are the block type and media type.
+
+#### Sending PDFs
+
+```python
+import base64
+
+with open("document.pdf", "rb") as f:
+    file_bytes = base64.standard_b64encode(f.read()).decode("utf-8")
+
+add_user_message(messages, [
+    {
+        "type": "document",
+        "source": {
+            "type": "base64",
+            "media_type": "application/pdf",
+            "data": file_bytes,
+        },
+    },
+    {"type": "text", "text": "Summarize the document in one sentence."},
+])
+```
+
+#### Differences from Images
+
+| | Images | PDFs |
+|---|---|---|
+| Block type | `"image"` | `"document"` |
+| Media type | `"image/png"`, `"image/jpeg"`, etc. | `"application/pdf"` |
+| SDK param type | `ImageBlockParam` | `DocumentBlockParam` |
+
+#### What Claude Can Extract
+
+Beyond plain text, Claude can analyze images, charts, tables, and document structure embedded in PDFs — making it a single tool for full document understanding.
