@@ -8,6 +8,7 @@ Exercises exploring Claude's advanced API features: extended thinking, vision, P
 - `vision.py` — sends a base64-encoded image with a text prompt, prints Claude's analysis
 - `pdf.py` — sends a base64-encoded PDF with a text prompt, prints Claude's summary
 - `citations.py` — enables citations on a PDF, prints inline markers and a references section
+- `caching.py` — demonstrates prompt caching with cache breakpoints, compares cache write vs read usage
 
 ## Concepts Learned
 
@@ -205,3 +206,73 @@ Text extracted from PDFs contains line breaks from the page layout. Collapse whi
 ```python
 cited_text = " ".join(citation.cited_text.split())
 ```
+
+### Prompt Caching
+
+Prompt caching speeds up responses and reduces cost by reusing computational work from previous requests. Instead of reprocessing the same content every time, Claude saves the work and serves it from cache on follow-up requests.
+
+#### How It Works
+
+Caching is a **prefix match**. The API processes your request in a fixed order — **tools → system prompt → messages** — and caches everything up to a `cache_control` breakpoint. On the next request, if the content up to that breakpoint is byte-identical, the cached work is reused.
+
+Any change before a breakpoint — even a single character — invalidates the cache for that breakpoint and everything after it.
+
+#### Cache Breakpoints
+
+Add `cache_control` to a content block to mark the cache boundary:
+
+```python
+system = [
+    {
+        "type": "text",
+        "text": "You are an expert coding assistant...",
+        "cache_control": {"type": "ephemeral"},
+    }
+]
+```
+
+Since tools render before the system prompt, a breakpoint on the system block caches both tools and system together.
+
+Rules:
+- Max **4 breakpoints** per request
+- Minimum cacheable prefix depends on the model (e.g., 2048 tokens for Sonnet 4.6)
+- Only the longhand block form supports `cache_control` — plain strings don't have a place for it
+
+#### Breakpoint Strategy
+
+You don't need a breakpoint on every block — one breakpoint caches everything before it. Place them at **stability boundaries**:
+
+1. Breakpoint on last tool → caches all tools
+2. Breakpoint on system prompt → caches tools + system
+3. Breakpoint on last stable message → caches the conversation prefix
+4. One spare for mid-conversation use
+
+In a conversation loop, "move" the breakpoint by placing `cache_control` on the latest turn's last content block each time. The growing history before it is included in the prefix automatically.
+
+#### TTL and Pricing
+
+| TTL | Write cost | Read cost | Syntax |
+|---|---|---|---|
+| 5 minutes (default) | 1.25× input rate | 0.1× input rate | `{"type": "ephemeral"}` |
+| 1 hour | 2× input rate | 0.1× input rate | `{"type": "ephemeral", "ttl": "1h"}` |
+
+Break-even with 5-minute TTL is just 2 requests (1.25× + 0.1× = 1.35× vs 2× uncached).
+
+#### Verifying Cache Hits
+
+The response `usage` object reports cache activity:
+
+| Field | Meaning |
+|---|---|
+| `cache_creation_input_tokens` | Tokens written to cache (paid write premium) |
+| `cache_read_input_tokens` | Tokens served from cache (paid 0.1×) |
+| `input_tokens` | Tokens processed at full price (uncached remainder) |
+
+Total prompt size = `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`.
+
+#### Best Candidates for Caching
+
+- **System prompts** — rarely change between requests
+- **Tool definitions** — same tools across an entire conversation
+- **Conversation history** — grows each turn but the prefix stays stable
+- **Large documents** — when asking multiple questions about the same content
