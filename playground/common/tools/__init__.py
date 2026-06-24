@@ -11,7 +11,7 @@ from .text_editor import handle_text_editor, text_editor_schema
 from .web_search import web_search_schema
 from .get_file_info import get_file_info, get_file_info_schema
 from .rag_search import rag_search, rag_search_schema
-from .read_image import read_image, read_image_schema
+from .read_media import read_media, read_media_schema
 
 tools: list[ToolUnionParam] = [
     get_current_datetime_schema,
@@ -23,7 +23,7 @@ tools: list[ToolUnionParam] = [
     web_search_schema,
     get_file_info_schema,
     rag_search_schema,
-    read_image_schema,
+    read_media_schema,
 ]
 
 
@@ -45,5 +45,5 @@ def run_tool(tool_name: str, tool_input: dict[str, Any]) -> Any:
             return get_file_info(**tool_input)
         case "rag_search":
             return rag_search(**tool_input)
-        case "read_image":
-            return read_image(**tool_input)
+        case "read_media":
+            return read_media(**tool_input)
