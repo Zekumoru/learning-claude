@@ -5,6 +5,7 @@ Exercises exploring Claude's advanced API features: extended thinking, vision, P
 ## Files
 
 - `extended_thinking.py` — enables thinking, prints both the reasoning and final answer, handles redacted thinking blocks
+- `vision.py` — sends a base64-encoded image with a text prompt, prints Claude's analysis
 
 ## Concepts Learned
 
@@ -71,3 +72,49 @@ The `display` parameter controls how thinking content is returned:
 | `"omitted"` | Returns an empty `thinking` field with only the `signature` | Production apps that never surface thinking to users; faster time-to-first-text-token when streaming |
 
 Both options still charge for full thinking tokens — `display` only affects what's transmitted, not what's computed.
+
+### Vision
+
+Claude can analyze images included in user messages. Images are sent as content blocks alongside text blocks within a single message.
+
+#### Sending Images
+
+Two source types are supported:
+
+- **Base64** — encode the file bytes and include them inline
+- **URL** — pass a direct link to the image
+
+```python
+import base64
+
+with open("image.png", "rb") as f:
+    image_bytes = base64.standard_b64encode(f.read()).decode("utf-8")
+
+add_user_message(messages, [
+    {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": image_bytes,
+        },
+    },
+    {"type": "text", "text": "What do you see in this image?"},
+])
+```
+
+#### Limits
+
+- Up to **100 images** across all messages in a single request
+- Max **5 MB** per image
+- Single image: max 8000px height/width
+- Multiple images: max 2000px height/width
+- Supported formats: PNG, JPEG, GIF, WebP
+
+#### Token Cost
+
+Each image counts as tokens based on its dimensions: `tokens = (width × height) / 750`.
+
+#### Prompting Tips
+
+The same prompt engineering techniques that work for text apply to images — structured step-by-step instructions, one-shot examples, and breaking complex analysis into smaller steps all improve accuracy significantly over simple questions.
