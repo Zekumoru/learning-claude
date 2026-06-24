@@ -1,9 +1,21 @@
-from anthropic.types import MessageParam
-from ..common.chat import run_conversation_stream, add_user_message
+from anthropic.types import MessageParam, ToolUnionParam
+from ..common.chat import run_conversation_stream, add_user_message, color, YELLOW
+from ..common.tools import (
+    run_tool,
+    read_image_schema,
+    text_editor_schema,
+)
 
 messages: list[MessageParam] = []
 
-print("Chatbot with adaptive thinking. Type 'exit' to quit.\n")
+tools: list[ToolUnionParam] = [
+    read_image_schema,
+    text_editor_schema,
+]
+
+print(
+    color("Chatbot with adaptive thinking and images. Type 'exit' to quit.\n", YELLOW)
+)
 
 while True:
     user_input = input("\033[36m|:\033[0m ")
@@ -12,5 +24,7 @@ while True:
         break
 
     add_user_message(messages, user_input)
-    run_conversation_stream(messages, thinking={"type": "adaptive"})
+    run_conversation_stream(
+        messages, thinking={"type": "adaptive"}, tools=tools, run_tool_callback=run_tool
+    )
     print()

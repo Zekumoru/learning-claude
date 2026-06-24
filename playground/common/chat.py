@@ -438,7 +438,11 @@ def run_tools(
             tool_result_block: ToolResultBlockParam = {
                 "type": "tool_result",
                 "tool_use_id": tool_request.id,
-                "content": json.dumps(tool_output),
+                "content": (
+                    tool_output
+                    if isinstance(tool_output, list)
+                    else json.dumps(tool_output)
+                ),
                 "is_error": False,
             }
         except Exception as e:
