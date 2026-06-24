@@ -51,6 +51,8 @@ add_user_message(messages, prompt)
 print(color("--- Prompt ---", CYAN))
 print(prompt)
 
+print()
+
 print(color("--- Request 1 (expects cache WRITE) ---", YELLOW))
 response1 = client.messages.create(
     model=model, max_tokens=max_tokens, system=system, tools=tools, messages=messages
