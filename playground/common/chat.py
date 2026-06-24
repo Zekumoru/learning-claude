@@ -27,6 +27,7 @@ from anthropic.types import (
     ThinkingBlock,
     RedactedThinkingBlock,
     TextBlock,
+    TextBlockParam,
     TextDelta,
     InputJSONDelta,
     ThinkingDelta,
@@ -378,20 +379,31 @@ def format_usage(message: Message) -> str:
     usage = message.usage
     input_tokens = usage.input_tokens
     output_tokens = usage.output_tokens
-    total_tokens = input_tokens + output_tokens
+    cache_creation = usage.cache_creation_input_tokens or 0
+    cache_read = usage.cache_read_input_tokens or 0
+    total_tokens = input_tokens + cache_creation + cache_read + output_tokens
 
     pricing = PRICING_PER_MILLION.get(model)
 
     if pricing:
-        input_cost = input_tokens * pricing["input"] / 1_000_000
+        rate = pricing["input"] / 1_000_000
+        input_cost = input_tokens * rate
         output_cost = output_tokens * pricing["output"] / 1_000_000
-        total_cost = input_cost + output_cost
+        cache_creation_cost = cache_creation * rate * 1.25
+        cache_read_cost = cache_read * rate * 0.1
+        total_cost = input_cost + output_cost + cache_creation_cost + cache_read_cost
         cost_str = f" | ${total_cost:.6f}"
     else:
         cost_str = ""
 
+    parts = [f"{input_tokens} in", f"{output_tokens} out"]
+    if cache_creation:
+        parts.append(f"{cache_creation} cache write")
+    if cache_read:
+        parts.append(f"{cache_read} cache read")
+
     return color(
-        f"[{input_tokens} in + {output_tokens} out = {total_tokens} tokens{cost_str}]",
+        f"[{' + '.join(parts)} = {total_tokens} tokens{cost_str}]",
         YELLOW,
     )
 
@@ -403,6 +415,27 @@ def print_usage(message: Message) -> None:
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
 
+def _with_cache_control(
+    system: str | None,
+    tools: list[ToolUnionParam] | None,
+) -> tuple[list[TextBlockParam], list[ToolUnionParam] | None]:
+    cached_system: list[TextBlockParam] = []
+    cached_tools: list[ToolUnionParam] | None = tools
+
+    if system:
+        cached_system.append(
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        )
+
+    if tools:
+        cached_tools = [
+            *tools[:-1],
+            cast(ToolUnionParam, {**tools[-1], "cache_control": {"type": "ephemeral"}}),
+        ]
+
+    return cached_system, cached_tools
+
+
 @overload
 def chat(
     messages: list[MessageParam],
@@ -412,6 +445,7 @@ def chat(
     stop_sequences: list[str] | None = None,
     tools: list[ToolUnionParam] | None = None,
     thinking: ThinkingConfigParam | None = None,
+    caching: bool | None = None,
     output_format: None = None,
 ) -> Message: ...
 
@@ -425,6 +459,7 @@ def chat(
     stop_sequences: list[str] | None = None,
     tools: list[ToolUnionParam] | None = None,
     thinking: ThinkingConfigParam | None = None,
+    caching: bool | None = None,
     output_format: type[TOutput],
 ) -> TOutput: ...
 
@@ -437,17 +472,24 @@ def chat(
     stop_sequences: list[str] | None = None,
     tools: list[ToolUnionParam] | None = None,
     thinking: ThinkingConfigParam | None = None,
+    caching: bool | None = None,
     output_format: type[TOutput] | None = None,
 ) -> Message | TOutput:
+    cached_system = None
+    cached_tools = None
+
+    if caching:
+        cached_system, cached_tools = _with_cache_control(system, tools)
+
     if output_format is not None:
         response = client.messages.parse(
             model=model,
             max_tokens=max_tokens,
             messages=messages,
-            system=omit_none(system),
+            system=omit_none(cached_system or system),
             temperature=omit_none(temperature),
             stop_sequences=omit_none(stop_sequences),
-            tools=omit_none(tools),
+            tools=omit_none(cached_tools or tools),
             thinking=omit_none(thinking),
             output_format=output_format,
         )
@@ -463,10 +505,10 @@ def chat(
         model=model,
         max_tokens=max_tokens,
         messages=messages,
-        system=omit_none(system),
+        system=omit_none(cached_system or system),
         temperature=omit_none(temperature),
         stop_sequences=omit_none(stop_sequences),
-        tools=omit_none(tools),
+        tools=omit_none(cached_tools or tools),
         thinking=omit_none(thinking),
     )
 
@@ -481,24 +523,28 @@ def chat_stream(
     stop_sequences: list[str] | None = None,
     thinking: ThinkingConfigParam | None = None,
     tools: list[ToolUnionParam] | None = None,
+    caching: bool | None = None,
 ) -> MessageStreamManager[None]:
+    cached_system = None
+    cached_tools = None
+
+    if caching:
+        cached_system, cached_tools = _with_cache_control(system, tools)
+
     return client.messages.stream(
         model=model,
         max_tokens=max_tokens,
         messages=messages,
-        system=omit_none(system),
+        system=omit_none(cached_system or system),
         temperature=omit_none(temperature),
         stop_sequences=omit_none(stop_sequences),
-        tools=omit_none(tools),
+        tools=omit_none(cached_tools or tools),
         thinking=omit_none(thinking),
     )
 
 
 def _has_document_blocks(blocks: list[object]) -> bool:
-    return any(
-        isinstance(b, dict) and b.get("type") == "document"
-        for b in blocks
-    )
+    return any(isinstance(b, dict) and b.get("type") == "document" for b in blocks)
 
 
 def run_tools(
@@ -555,12 +601,13 @@ def run_conversation(
     tools: list[ToolUnionParam] | None = None,
     run_tool_callback: Callable[[str, dict[str, object]], object] | None = None,
     thinking: ThinkingConfigParam | None = None,
+    caching: bool | None = None,
     verbose: bool = False,
 ) -> None:
     renderer = MessageConsoleRenderer()
 
     while True:
-        response = chat(messages, tools=tools, thinking=thinking)
+        response = chat(messages, tools=tools, thinking=thinking, caching=caching)
 
         if verbose:
             renderer.verbose_json(response)
@@ -615,6 +662,7 @@ def run_conversation_stream(
     tools: list[ToolUnionParam] | None = None,
     run_tool_callback: Callable[[str, dict[str, object]], object] | None = None,
     thinking: ThinkingConfigParam | None = None,
+    caching: bool | None = None,
     verbose: bool = False,
 ) -> None:
     writer = ConsoleWriter()
@@ -622,7 +670,7 @@ def run_conversation_stream(
 
     while True:
         with chat_stream(
-            messages, system=system, tools=tools, thinking=thinking
+            messages, system=system, tools=tools, thinking=thinking, caching=caching
         ) as stream:
             stream_renderer = _handle_stream_event(stream, tools=tools, writer=writer)
             response = stream.get_final_message()

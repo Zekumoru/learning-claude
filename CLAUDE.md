@@ -36,7 +36,7 @@ playground/          # Course exercises and Agent SDK experiments
 ## Conventions
 
 - Always use relative paths in scripts, config files, and any generated files — never absolute paths.
-- Always use proper types from libraries/SDKs — prefer typed constructs (e.g. `ToolParam`, `ToolTextEditor20250728Param`) over untyped dicts.
+- Always use proper types from libraries/SDKs — prefer typed constructs (e.g. `ToolParam`, `ToolTextEditor20250728Param`) over untyped dicts. Never use `object` or `Any` as lazy type annotations — find the correct specific type and annotate variables explicitly.
 - When guiding the user through code, present it step by step — explain what each piece does before moving on. "Guide me" means present the code for the user to type out, not ask the user to write it from scratch. The user will write code themselves when they have a feel for the concept — don't over-explain things they already grasp.
 - Treat all code — including learning exercises — with the same quality standards as production code. No `any` types, no ignoring errors, no "it's just a demo" shortcuts. When encountering errors, find and fix the root cause — don't just silence the tooling. Search online if needed.
 
