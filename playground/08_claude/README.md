@@ -9,6 +9,7 @@ Exercises exploring Claude's advanced API features: extended thinking, vision, P
 - `pdf.py` — sends a base64-encoded PDF with a text prompt, prints Claude's summary
 - `citations.py` — enables citations on a PDF, prints inline markers and a references section
 - `caching.py` — demonstrates prompt caching with cache breakpoints, compares cache write vs read usage
+- `code_execution.py` — generates a CSV, uploads it via the Files API, asks Claude to analyze it with code execution, and downloads the output plot
 
 ## Concepts Learned
 
@@ -75,6 +76,30 @@ The `display` parameter controls how thinking content is returned:
 | `"omitted"` | Returns an empty `thinking` field with only the `signature` | Production apps that never surface thinking to users; faster time-to-first-text-token when streaming |
 
 Both options still charge for full thinking tokens — `display` only affects what's transmitted, not what's computed.
+
+#### Adaptive Thinking
+
+`{"type": "adaptive"}` lets Claude decide whether to think and how much, rather than you setting a fixed budget:
+
+```python
+response = chat(
+    messages,
+    thinking={"type": "adaptive"},
+)
+```
+
+The key differences from `{"type": "enabled", "budget_tokens": N}`:
+
+| | `enabled` | `adaptive` |
+|---|---|---|
+| Who controls budget | You (fixed cap) | Claude (per-request) |
+| Simple questions | Burns tokens unnecessarily | Skips thinking entirely |
+| Hard questions | Capped at your budget | Uses as much as needed |
+| `budget_tokens` required | Yes | No — rejected if provided |
+
+Use `adaptive` in multi-turn chatbots and agentic loops where request complexity varies. Use `enabled` when you need a hard cost ceiling or are benchmarking at a specific reasoning depth.
+
+`adaptive` is the default for Claude 4.6+ models — omitting the `thinking` parameter is equivalent to passing `{"type": "adaptive"}`.
 
 ### Vision
 
@@ -276,3 +301,93 @@ Total prompt size = `input_tokens + cache_creation_input_tokens + cache_read_inp
 - **Tool definitions** — same tools across an entire conversation
 - **Conversation history** — grows each turn but the prefix stays stable
 - **Large documents** — when asking multiple questions about the same content
+
+### Files API and Code Execution
+
+The Files API and code execution tool are designed to work together: files are the primary way to get data in and out of the sandboxed container, since it has no network access.
+
+#### Files API
+
+Upload a file once and reference it by ID in any future request — no re-encoding needed:
+
+```python
+with open("data.csv", "rb") as f:
+    file_object = client.beta.files.upload(
+        file=("data.csv", f, "text/csv"),
+    )
+```
+
+The `file` parameter is a 3-tuple of `(filename, file_object, mime_type)` — the same shape as a multipart form upload. The file is stored at the workspace level and persists until you explicitly delete it with `client.beta.files.delete(file_id)`.
+
+File types and the content block they map to:
+
+| File type | MIME type | Block type |
+|---|---|---|
+| PDF / plain text | `application/pdf`, `text/plain` | `document` |
+| Image | `image/png`, `image/jpeg`, etc. | `image` |
+| CSV, Excel, JSON, etc. | varies | `container_upload` |
+
+Note: uploaded files cannot be downloaded back. Only files *created by* code execution (plots, reports) are downloadable.
+
+#### Code Execution Tool
+
+A server-side tool — you declare it, Claude decides when to use it. No implementation required:
+
+```python
+tool: BetaCodeExecutionTool20260120Param = {
+    "type": "code_execution_20260120",
+    "name": "code_execution",
+}
+```
+
+The sandbox is an isolated Linux container (Python 3.11, no network). It comes pre-loaded with pandas, numpy, matplotlib, seaborn, and other common libraries. Both Files API and code execution require the beta header:
+
+```python
+client.beta.messages.create(
+    betas=["files-api-2025-04-14"],
+    tools=[tool],
+    ...
+)
+```
+
+Pass the uploaded file into the container with a `container_upload` block alongside your text prompt:
+
+```python
+upload_block: BetaContainerUploadBlockParam = {
+    "type": "container_upload",
+    "file_id": file_object.id,
+}
+```
+
+#### Response Block Types
+
+A code execution response contains a mix of block types:
+
+| Block type | Meaning |
+|---|---|
+| `BetaTextBlock` | Claude's analysis text |
+| `BetaServerToolUseBlock` | A command or file operation Claude ran (`block.name`: `bash_code_execution` or `text_editor_code_execution`) |
+| `BetaBashCodeExecutionToolResultBlock` | The result of that command; `block.content` is either `BetaBashCodeExecutionResultBlock` (stdout/stderr + output files) or `BetaBashCodeExecutionToolResultError` |
+
+Output files (e.g. plots) live inside `BetaBashCodeExecutionResultBlock.content` as `BetaBashCodeExecutionOutputBlock` items, each carrying a `file_id`.
+
+#### Downloading Output Files
+
+```python
+metadata = client.beta.files.retrieve_metadata(file_id)
+content = client.beta.files.download(file_id)
+content.write_to_file(metadata.filename)
+```
+
+#### Containers
+
+Each request gets a fresh container by default. To reuse a container across requests (preserving files and installed packages), pass the container ID from a previous response:
+
+```python
+response2 = client.messages.create(
+    container=response1.container.id,
+    ...
+)
+```
+
+Containers expire 30 days after creation. Files API storage and containers are independent — uploading a file does not put it in a container; the `container_upload` block copies it in at request time.
