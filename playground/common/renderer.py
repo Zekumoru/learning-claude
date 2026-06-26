@@ -66,7 +66,7 @@ def format_usage(message: Message) -> str:
         cache_creation_cost = cache_creation * rate * 1.25
         cache_read_cost = cache_read * rate * 0.1
         total_cost = input_cost + output_cost + cache_creation_cost + cache_read_cost
-        cost_str = f" | ${total_cost:.6f}"
+        cost_str = f" (${total_cost:.6f})"
     else:
         cost_str = ""
 

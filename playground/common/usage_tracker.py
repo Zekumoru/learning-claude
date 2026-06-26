@@ -56,4 +56,4 @@ def on_usage(message: Message) -> None:
         )
         total: float = conn.execute("SELECT SUM(cost) FROM usage").fetchone()[0]
 
-    print(color(f"[All-time: ${total:.4f}]", YELLOW))
+    print(color(f"[All-time: ${total:.2f}]", YELLOW))
