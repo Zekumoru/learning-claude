@@ -113,6 +113,46 @@ def _with_cache_control(
     return cached_system, cached_tools
 
 
+def _with_message_cache_control(messages: list[MessageParam]) -> list[MessageParam]:
+    """Return a copy of `messages` with a cache breakpoint on the last block of
+    the last message.
+
+    A breakpoint on a message caches the entire prefix before it — tools, system,
+    and the conversation so far — so a long, growing history is read from cache on
+    the next turn instead of being reprocessed at full price. This "moving"
+    breakpoint walks forward each turn as new messages are appended.
+
+    Non-mutating: the caller's list and message dicts are left untouched, so
+    markers never accumulate across turns (each request carries exactly one).
+    """
+    if not messages:
+        return messages
+
+    last = messages[-1]
+    content = last["content"]
+
+    if isinstance(content, str):
+        marked: list[ContentBlockParam] = [
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        ]
+    else:
+        # The last message at a stream call is always a user message (initial
+        # text or tool results), so its content blocks are param dicts, not
+        # response ContentBlock models.
+        blocks = cast(list[ContentBlockParam], list(content))
+        if not blocks:
+            return messages
+        marked = [
+            *blocks[:-1],
+            cast(
+                ContentBlockParam,
+                {**blocks[-1], "cache_control": {"type": "ephemeral"}},
+            ),
+        ]
+
+    return [*messages[:-1], {"role": last["role"], "content": marked}]
+
+
 @overload
 def chat(
     messages: list[MessageParam],
@@ -207,15 +247,19 @@ def chat_stream(
 ) -> MessageStreamManager[None] | BetaMessageStreamManager[None]:
     cached_system = None
     cached_tools = None
+    cached_messages = messages
 
     if caching:
         cached_system, cached_tools = _with_cache_control(system, tools)
+        # Moving breakpoint on the latest message — caches tools + system + the
+        # whole conversation prefix so the growing history is read from cache.
+        cached_messages = _with_message_cache_control(messages)
 
     if betas:
         return client.beta.messages.stream(
             model=model,
             max_tokens=max_tokens,
-            messages=cast(list[BetaMessageParam], messages),
+            messages=cast(list[BetaMessageParam], cached_messages),
             system=omit_none(
                 cast(list[BetaTextBlockParam] | str | None, cached_system or system)
             ),
@@ -232,7 +276,7 @@ def chat_stream(
     return client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        messages=messages,
+        messages=cached_messages,
         system=omit_none(cached_system or system),
         temperature=omit_none(temperature),
         stop_sequences=omit_none(stop_sequences),

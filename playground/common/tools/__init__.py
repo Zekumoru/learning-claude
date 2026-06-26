@@ -13,6 +13,8 @@ from .get_file_info import get_file_info, get_file_info_schema
 from .rag_search import rag_search, rag_search_schema
 from .read_media import read_media, read_media_schema
 from .upload_file import upload_file, upload_file_schema
+from .list_files import list_files, list_files_schema
+from .delete_file import delete_file, delete_file_schema
 
 tools: list[ToolUnionParam] = [
     get_current_datetime_schema,
@@ -51,3 +53,7 @@ def run_tool(tool_name: str, tool_input: dict[str, Any]) -> Any:
             return read_media(**tool_input)
         case "upload_file":
             return upload_file(**tool_input)
+        case "list_files":
+            return list_files()
+        case "delete_file":
+            return delete_file(**tool_input)
