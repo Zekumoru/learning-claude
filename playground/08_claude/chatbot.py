@@ -1,5 +1,6 @@
 from anthropic.types import MessageParam, ToolUnionParam
-from ..common.chat import run_conversation_stream, add_user_message, color, YELLOW
+from ..common.chat import run_conversation_stream, add_user_message
+from ..common.renderer import color, YELLOW
 from ..common.tools import (
     tools,
     run_tool,

@@ -27,3 +27,6 @@ results*.html
 articles/
 # Ignore test images in section 8
 **/08_claude/assets/
+
+# Logging
+*.db

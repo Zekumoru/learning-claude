@@ -20,7 +20,7 @@ tools: list[ToolUnionParam] = [
     save_article_schema,
     text_editor_schema,
     # Note: haiku does not support web tooling, if using that model, comment:
-    web_search_schema,
+    # web_search_schema,
     get_file_info_schema,
     rag_search_schema,
     read_media_schema,
