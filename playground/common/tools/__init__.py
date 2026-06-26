@@ -12,6 +12,7 @@ from .web_search import web_search_schema
 from .get_file_info import get_file_info, get_file_info_schema
 from .rag_search import rag_search, rag_search_schema
 from .read_media import read_media, read_media_schema
+from .upload_file import upload_file, upload_file_schema
 
 tools: list[ToolUnionParam] = [
     get_current_datetime_schema,
@@ -24,6 +25,7 @@ tools: list[ToolUnionParam] = [
     get_file_info_schema,
     rag_search_schema,
     read_media_schema,
+    # upload_file_schema is a beta tool, better to add it when using beta stream
 ]
 
 
@@ -47,3 +49,5 @@ def run_tool(tool_name: str, tool_input: dict[str, Any]) -> Any:
             return rag_search(**tool_input)
         case "read_media":
             return read_media(**tool_input)
+        case "upload_file":
+            return upload_file(**tool_input)

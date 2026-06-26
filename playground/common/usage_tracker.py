@@ -1,8 +1,8 @@
 import sqlite3
 from pathlib import Path
-from anthropic.types import Message
 from .pricing import PRICING_PER_MILLION
 from .renderer import color, YELLOW
+from .types import AnyMessage
 
 DB_PATH = Path(__file__).parent / "usage.db"
 
@@ -23,7 +23,7 @@ def init_db() -> None:
         """)
 
 
-def on_usage(message: Message) -> None:
+def on_usage(message: AnyMessage) -> None:
     usage = message.usage
     input_tokens = usage.input_tokens
     output_tokens = usage.output_tokens

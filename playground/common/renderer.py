@@ -23,8 +23,27 @@ from anthropic.types import (
 from anthropic.lib.streaming import (
     MessageStream,
     ParsedMessageStreamEvent,
+    BetaMessageStream,
+    ParsedBetaMessageStreamEvent,
 )
-from typing import Protocol, TypeGuard, cast, Mapping
+from anthropic.types.beta import (
+    BetaContentBlock,
+    BetaRawContentBlockDelta,
+    BetaRawContentBlockStartEvent,
+    BetaRawContentBlockDeltaEvent,
+    BetaRawContentBlockStopEvent,
+    BetaServerToolUseBlock,
+    BetaToolUseBlock,
+    BetaThinkingBlock,
+    BetaTextBlock,
+    BetaTextDelta,
+    BetaInputJSONDelta,
+    BetaThinkingDelta,
+    BetaCitationsDelta,
+    BetaSignatureDelta,
+)
+from .types import AnyMessage
+from typing import Protocol, TypeGuard, Literal, cast, Mapping
 from .pricing import PRICING_PER_MILLION
 from .defaults import model
 import json
@@ -49,7 +68,7 @@ def supports_model_dump_json(value: object) -> TypeGuard[SupportsModelDumpJson]:
     return hasattr(value, "model_dump_json")
 
 
-def format_usage(message: Message) -> str:
+def format_usage(message: AnyMessage) -> str:
     usage = message.usage
     input_tokens = usage.input_tokens
     output_tokens = usage.output_tokens
@@ -200,7 +219,7 @@ class MessageConsoleRenderer:
         self.writer.line(rendered)
         self.writer.newline()
 
-    def usage(self, message: Message, *, before: int = 1) -> None:
+    def usage(self, message: AnyMessage, *, before: int = 1) -> None:
         self.writer.line(format_usage(message), before=before)
 
     def max_tokens_error(self) -> None:
@@ -250,6 +269,18 @@ class MessageConsoleRenderer:
         print_citations(citations, self.writer)
 
 
+def _server_tool_status(tool_name: str) -> str:
+    match tool_name:
+        case "web_search":
+            return "Searching the web..."
+        case "bash_code_execution":
+            return "Running code..."
+        case "text_editor_code_execution":
+            return "Editing files..."
+        case _:
+            return f"Using {tool_name}..."
+
+
 def _get_eager_input_streaming_by_tool_name(
     tools: list[ToolUnionParam] | None,
 ) -> dict[str, bool]:
@@ -267,6 +298,11 @@ def _get_eager_input_streaming_by_tool_name(
     return result
 
 
+# The kind of output segment last rendered within a turn. Drives both section
+# headings and the blank-line spacing between segments.
+Section = Literal["none", "thinking", "text", "status"]
+
+
 class StreamConsoleRenderer:
     def __init__(
         self,
@@ -276,22 +312,23 @@ class StreamConsoleRenderer:
         self.writer = writer or ConsoleWriter()
         self.tool_inputs: dict[int, str] = {}
         self.eager_indices: set[int] = set()
-        self.printed_text = False
-        self.printed_thinking = False
+        self.section: Section = "none"
         self.eager_by_tool_name = _get_eager_input_streaming_by_tool_name(tools)
         self.citations: list[TextCitation] = []
 
-    def render(self, stream: MessageStream[None]) -> None:
+    def render(self, stream: MessageStream[None] | BetaMessageStream[None]) -> None:
         for event in stream:
             self.handle(event)
 
-    def handle(self, event: ParsedMessageStreamEvent[None]) -> None:
+    def handle(
+        self, event: ParsedMessageStreamEvent[None] | ParsedBetaMessageStreamEvent[None]
+    ) -> None:
         match event:
-            case RawContentBlockStartEvent():
+            case RawContentBlockStartEvent() | BetaRawContentBlockStartEvent():
                 self._handle_content_block_start(event.index, event.content_block)
-            case RawContentBlockDeltaEvent():
+            case RawContentBlockDeltaEvent() | BetaRawContentBlockDeltaEvent():
                 self._handle_content_block_delta(event.index, event.delta)
-            case RawContentBlockStopEvent():
+            case RawContentBlockStopEvent() | BetaRawContentBlockStopEvent():
                 self._handle_content_block_stop(event.index)
 
     def finish_inline_output(self) -> None:
@@ -299,38 +336,50 @@ class StreamConsoleRenderer:
         print_citations(self.citations, self.writer)
 
     def _handle_content_block_start(
-        self, index: int, content_block: ContentBlock
+        self, index: int, content_block: ContentBlock | BetaContentBlock
     ) -> None:
+        # One blank line before each new segment, except the first of the turn —
+        # there the gap between turns (or nothing, for turn one) already spaces it.
+        before = 0 if self.section == "none" else 1
+
         match content_block:
-            case ServerToolUseBlock():
-                self._status("Searching the web...", MAGENTA)
-            case ToolUseBlock():
-                self._start_tool_use(index, content_block.name)
-            case ThinkingBlock():
-                self.printed_thinking = True
-                self.writer.heading("[Thinking]", CYAN)
-            case TextBlock():
-                if self.printed_thinking and not self.printed_text:
-                    self.writer.heading("[Response]", GREEN)
+            case ServerToolUseBlock() | BetaServerToolUseBlock():
+                self._status(_server_tool_status(content_block.name), MAGENTA, before)
+                self.section = "status"
+            case ToolUseBlock() | BetaToolUseBlock():
+                self._start_tool_use(index, content_block.name, before)
+                self.section = "status"
+            case ThinkingBlock() | BetaThinkingBlock():
+                self.writer.heading("[Thinking]", CYAN, before=before)
+                self.section = "thinking"
+            case TextBlock() | BetaTextBlock():
+                # Only label the response when it resumes after thinking or a
+                # tool; a plain answer with no preamble needs no heading.
+                if self.section in ("thinking", "status"):
+                    self.writer.heading("[Response]", GREEN, before=before)
+                self.section = "text"
 
     def _handle_content_block_delta(
-        self, index: int, delta: RawContentBlockDelta
+        self, index: int, delta: RawContentBlockDelta | BetaRawContentBlockDelta
     ) -> None:
         match delta:
-            case TextDelta():
-                self.printed_text = True
+            case TextDelta() | BetaTextDelta():
                 self.writer.write(delta.text)
-            case InputJSONDelta():
+            case InputJSONDelta() | BetaInputJSONDelta():
                 self._append_tool_input(index, delta.partial_json)
-            case ThinkingDelta():
+            case ThinkingDelta() | BetaThinkingDelta():
                 self.writer.write(delta.thinking)
+            # Regular-only: the beta stream path is used for code execution /
+            # Files API, which never emits citations. Matching BetaCitationsDelta
+            # here would force self.citations and print_citations to widen into
+            # beta location types for no real gain.
             case CitationsDelta():
                 citation = delta.citation
                 if citation not in self.citations:
                     self.citations.append(citation)
                 citation_index = self.citations.index(citation) + 1
                 self.writer.write(f"[{citation_index}]")
-            case SignatureDelta():
+            case SignatureDelta() | BetaSignatureDelta():
                 return
 
     def _handle_content_block_stop(self, index: int) -> None:
@@ -346,14 +395,14 @@ class StreamConsoleRenderer:
         except json.JSONDecodeError:
             self.writer.line("Error: Received invalid JSON after stream", before=1)
 
-    def _start_tool_use(self, index: int, tool_name: str) -> None:
+    def _start_tool_use(self, index: int, tool_name: str, before: int) -> None:
         self.tool_inputs[index] = ""
 
         if self.eager_by_tool_name.get(tool_name, False):
             self.eager_indices.add(index)
-            self._status(f"Generating tool use `{tool_name}` arguments...", CYAN)
+            self._status(f"Generating tool use `{tool_name}` arguments...", CYAN, before)
         else:
-            self._status(f"Using tool `{tool_name}`...", CYAN)
+            self._status(f"Using tool `{tool_name}`...", CYAN, before)
 
     def _append_tool_input(self, index: int, partial_json: str) -> None:
         if index not in self.tool_inputs:
@@ -364,7 +413,5 @@ class StreamConsoleRenderer:
         if index in self.eager_indices:
             self.writer.write(partial_json)
 
-    def _status(self, message: str, ansi_color: str) -> None:
-        self.writer.line(
-            color(message, ansi_color), before=1 if self.printed_text else 0
-        )
+    def _status(self, message: str, ansi_color: str, before: int) -> None:
+        self.writer.line(color(message, ansi_color), before=before)

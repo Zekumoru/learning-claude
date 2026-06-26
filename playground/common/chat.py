@@ -21,13 +21,24 @@ from anthropic.types import (
 from anthropic.lib.streaming import (
     MessageStream,
     MessageStreamManager,
+    BetaMessageStream,
+    BetaMessageStreamManager,
 )
+from anthropic.types.beta import (
+    BetaMessage,
+    BetaMessageParam,
+    BetaTextBlockParam,
+    BetaToolUnionParam,
+    BetaThinkingConfigParam,
+    BetaContainerUploadBlockParam,
+)
+from .types import AnyMessage
 from .defaults import model, max_tokens
 from .renderer import ConsoleWriter, MessageConsoleRenderer, StreamConsoleRenderer
 from .usage_tracker import init_db, on_usage
 import json
 
-UsageCallback = Callable[[Message], None]
+UsageCallback = Callable[[AnyMessage], None]
 
 _usage_callbacks: list[UsageCallback] = [on_usage]
 
@@ -36,7 +47,7 @@ def register_usage_callback(cb: UsageCallback) -> None:
     _usage_callbacks.append(cb)
 
 
-def _fire_usage_callbacks(message: Message) -> None:
+def _fire_usage_callbacks(message: AnyMessage) -> None:
     for cb in _usage_callbacks:
         cb(message)
 
@@ -62,13 +73,15 @@ def add_user_message(
     )
 
 
-def add_assistant_message(messages: list[MessageParam], message: str | Message) -> None:
-    messages.append(
-        {
-            "role": "assistant",
-            "content": message.content if isinstance(message, Message) else message,
-        }
+def add_assistant_message(
+    messages: list[MessageParam], message: str | AnyMessage
+) -> None:
+    content: str | list[ContentBlockParam] = (
+        message
+        if isinstance(message, str)
+        else cast(list[ContentBlockParam], message.content)
     )
+    messages.append({"role": "assistant", "content": content})
 
 
 def text_from_message(message: Message) -> str:
@@ -189,12 +202,32 @@ def chat_stream(
     thinking: ThinkingConfigParam | None = None,
     tools: list[ToolUnionParam] | None = None,
     caching: bool | None = None,
-) -> MessageStreamManager[None]:
+    betas: list[str] | None = None,
+    container: str | None = None,
+) -> MessageStreamManager[None] | BetaMessageStreamManager[None]:
     cached_system = None
     cached_tools = None
 
     if caching:
         cached_system, cached_tools = _with_cache_control(system, tools)
+
+    if betas:
+        return client.beta.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            messages=cast(list[BetaMessageParam], messages),
+            system=omit_none(
+                cast(list[BetaTextBlockParam] | str | None, cached_system or system)
+            ),
+            temperature=omit_none(temperature),
+            stop_sequences=omit_none(stop_sequences),
+            tools=omit_none(
+                cast(list[BetaToolUnionParam] | None, cached_tools or tools)
+            ),
+            thinking=omit_none(cast(BetaThinkingConfigParam | None, thinking)),
+            container=omit_none(container),
+            betas=betas,
+        )
 
     return client.messages.stream(
         model=model,
@@ -208,16 +241,33 @@ def chat_stream(
     )
 
 
-def _has_document_blocks(blocks: list[object]) -> bool:
-    return any(isinstance(b, dict) and b.get("type") == "document" for b in blocks)
+# Block types that must be hoisted out of a tool_result and into the user
+# message itself: `document` (for citations) and `container_upload` (for the
+# code-execution container). Neither is valid nested inside a tool_result.
+HOISTED_BLOCK_TYPES = {"document", "container_upload"}
+
+
+def _hoisted_blocks(tool_output: object) -> list[dict[str, object]]:
+    if not isinstance(tool_output, list):
+        return []
+    return [
+        block
+        for block in tool_output
+        if isinstance(block, dict) and block.get("type") in HOISTED_BLOCK_TYPES
+    ]
 
 
 def run_tools(
-    message: Message, run_tool: Callable[[str, dict[str, object]], object] | None
-) -> tuple[list[ToolResultBlockParam], list[DocumentBlockParam]]:
+    message: AnyMessage, run_tool: Callable[[str, dict[str, object]], object] | None
+) -> tuple[
+    list[ToolResultBlockParam],
+    list[DocumentBlockParam],
+    list[BetaContainerUploadBlockParam],
+]:
     tool_requests = [block for block in message.content if block.type == "tool_use"]
     tool_result_blocks: list[ToolResultBlockParam] = []
     document_blocks: list[DocumentBlockParam] = []
+    container_upload_blocks: list[BetaContainerUploadBlockParam] = []
 
     for tool_request in tool_requests:
         try:
@@ -227,14 +277,21 @@ def run_tools(
                 )
 
             tool_output = run_tool(tool_request.name, tool_request.input)
+            hoisted = _hoisted_blocks(tool_output)
 
-            if isinstance(tool_output, list) and _has_document_blocks(tool_output):
-                for block in tool_output:
-                    document_blocks.append(cast(DocumentBlockParam, block))
+            if hoisted:
+                for block in hoisted:
+                    match block.get("type"):
+                        case "document":
+                            document_blocks.append(cast(DocumentBlockParam, block))
+                        case "container_upload":
+                            container_upload_blocks.append(
+                                cast(BetaContainerUploadBlockParam, block)
+                            )
                 tool_result_block: ToolResultBlockParam = {
                     "type": "tool_result",
                     "tool_use_id": tool_request.id,
-                    "content": "Document loaded successfully.",
+                    "content": "Loaded successfully.",
                     "is_error": False,
                 }
             else:
@@ -258,7 +315,7 @@ def run_tools(
 
         tool_result_blocks.append(tool_result_block)
 
-    return tool_result_blocks, document_blocks
+    return tool_result_blocks, document_blocks, container_upload_blocks
 
 
 def run_conversation(
@@ -286,7 +343,7 @@ def run_conversation(
         if response.stop_reason != "tool_use":
             break
 
-        tool_results, documents = run_tools(response, run_tool_callback)
+        tool_results, documents, _ = run_tools(response, run_tool_callback)
 
         if verbose:
             renderer.verbose_json(tool_results)
@@ -295,7 +352,7 @@ def run_conversation(
 
 
 def _handle_stream_event(
-    stream: MessageStream[None],
+    stream: MessageStream[None] | BetaMessageStream[None],
     tools: list[ToolUnionParam] | None = None,
     writer: ConsoleWriter | None = None,
 ) -> StreamConsoleRenderer:
@@ -311,17 +368,32 @@ def run_conversation_stream(
     run_tool_callback: Callable[[str, dict[str, object]], object] | None = None,
     thinking: ThinkingConfigParam | None = None,
     caching: bool | None = None,
+    betas: list[str] | None = None,
+    on_response: Callable[[AnyMessage], None] | None = None,
     verbose: bool = False,
 ) -> None:
     writer = ConsoleWriter()
     message_renderer = MessageConsoleRenderer(writer)
+    container_id: str | None = None
 
     while True:
         with chat_stream(
-            messages, system=system, tools=tools, thinking=thinking, caching=caching
+            messages,
+            system=system,
+            tools=tools,
+            thinking=thinking,
+            caching=caching,
+            betas=betas,
+            container=container_id,
         ) as stream:
             stream_renderer = _handle_stream_event(stream, tools=tools, writer=writer)
             response = stream.get_final_message()
+
+        # Persist the code-execution container across turns so a paused turn
+        # (pause_turn) resumes the same container instead of orphaning its
+        # server tool use with a fresh one.
+        if isinstance(response, BetaMessage) and response.container is not None:
+            container_id = response.container.id
 
         is_tool_use = response.stop_reason in ("tool_use", "pause_turn")
 
@@ -335,6 +407,9 @@ def run_conversation_stream(
         message_renderer.usage(response)
         _fire_usage_callbacks(response)
 
+        if on_response is not None:
+            on_response(response)
+
         if response.stop_reason == "max_tokens":
             message_renderer.max_tokens_error()
 
@@ -344,15 +419,22 @@ def run_conversation_stream(
         writer.gap(1)
 
         if response.stop_reason == "pause_turn":
-            messages = [
-                messages[0],
-                {"role": "assistant", "content": response.content},
-            ]
             continue
 
-        tool_results, documents = run_tools(response, run_tool_callback)
+        tool_results, documents, container_uploads = run_tools(
+            response, run_tool_callback
+        )
 
         if verbose:
             message_renderer.verbose_json(tool_results)
 
-        add_user_message(messages, [*tool_results, *documents])
+        add_user_message(
+            messages,
+            [
+                *tool_results,
+                *documents,
+                # container_upload is a beta-only block; it round-trips as a dict
+                # and the beta endpoint consumes it, so we cast at this boundary.
+                *cast(list[ContentBlockParam], container_uploads),
+            ],
+        )
