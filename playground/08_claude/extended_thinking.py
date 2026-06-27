@@ -4,7 +4,8 @@ from anthropic.types import (
     TextBlock,
     RedactedThinkingBlock,
 )
-from ..common.chat import chat, max_tokens, print_usage, add_user_message
+from ..common.chat import chat, max_tokens, add_user_message
+from ..common.renderer import print_usage
 
 budget_tokens = int(max_tokens / 2)
 messages: list[MessageParam] = []

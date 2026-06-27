@@ -1,7 +1,8 @@
 import base64
 from pathlib import Path
 from anthropic.types import MessageParam
-from ..common.chat import chat, print_usage, add_user_message, text_from_message
+from ..common.chat import chat, add_user_message, text_from_message
+from ..common.renderer import print_usage
 
 pdf_path = Path(__file__).parent / "assets/test.pdf"
 

@@ -5,6 +5,8 @@ from ..common.chat import (
     max_tokens,
     add_user_message,
     text_from_message,
+)
+from ..common.renderer import (
     color,
     RED,
     GREEN,
