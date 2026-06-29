@@ -44,7 +44,7 @@ from anthropic.types.beta import (
 )
 from .types import AnyMessage
 from typing import Protocol, TypeGuard, Literal, cast, Mapping
-from .pricing import PRICING_PER_MILLION
+from .pricing import pricing_for
 import json
 
 RESET = "\033[0m"
@@ -75,7 +75,7 @@ def format_usage(message: AnyMessage) -> str:
     cache_read = usage.cache_read_input_tokens or 0
     total_tokens = input_tokens + cache_creation + cache_read + output_tokens
 
-    pricing = PRICING_PER_MILLION.get(message.model)
+    pricing = pricing_for(message.model)
 
     if pricing:
         rate = pricing["input"] / 1_000_000

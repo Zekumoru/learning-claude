@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from .pricing import PRICING_PER_MILLION
+from .pricing import pricing_for
 from .renderer import color, YELLOW
 from .types import AnyMessage
 
@@ -30,7 +30,7 @@ def on_usage(message: AnyMessage) -> None:
     cache_creation = usage.cache_creation_input_tokens or 0
     cache_read = usage.cache_read_input_tokens or 0
 
-    pricing = PRICING_PER_MILLION.get(message.model)
+    pricing = pricing_for(message.model)
     if pricing is None:
         return
 
