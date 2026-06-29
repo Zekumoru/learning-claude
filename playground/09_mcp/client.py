@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pydantic import AnyUrl
 from contextlib import AsyncExitStack
 from pathlib import Path
 from types import TracebackType
@@ -6,7 +8,7 @@ from typing import Any, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import CallToolResult, Tool
+from mcp.types import CallToolResult, TextResourceContents, Tool
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,6 +51,20 @@ class MCPClient:
         self, tool_name: str, tool_input: dict[str, Any]
     ) -> CallToolResult:
         return await self.session().call_tool(tool_name, tool_input)
+
+    async def read_resource(self, uri: str) -> Any:
+        result = await self.session().read_resource(AnyUrl(uri))
+        resource = result.contents[0]
+
+        match resource:
+            case TextResourceContents():
+                if resource.mimeType == "application/json":
+                    return json.loads(resource.text)
+                return resource.text
+            case _:
+                raise ValueError(
+                    f"Unsupported resource content for {uri}: {type(resource).__name__}"
+                )
 
     async def __aenter__(self) -> Self:
         await self.connect()
