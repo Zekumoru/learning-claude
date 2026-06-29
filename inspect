@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Launch the MCP Inspector against any MCP server file in this repo.
+#
+# Usage:
+#   ./inspect playground/09_mcp/server.py                          # browser UI
+#   ./inspect playground/09_mcp/server.py --cli --method tools/list  # headless
+#
+# Why the indirection (and not `mcp dev`):
+#   - `mcp dev` is hardcoded to call `npx` and runs in the repo cwd, so npm
+#     reads this repo's pnpm-only `devEngines` and aborts (EBADDEVENGINES).
+#   - `pnpm dlx` can't load the Inspector CLI's undeclared `commander` import
+#     under pnpm's node_modules layout (strict or hoisted).
+# So we run `npx` (flat layout, commander resolves) from a throwaway dir that
+# has no package.json (nothing for the devEngines check to read), and use
+# `uv run --directory` so the server still runs inside this repo's uv env.
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: ./inspect <server.py> [inspector args...]" >&2
+  exit 1
+fi
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve the server path to absolute *before* we cd away from the caller's dir.
+server="$1"; shift
+server_abs="$(cd "$(dirname "$server")" && pwd)/$(basename "$server")"
+
+cd "$(mktemp -d)"
+
+exec npx @modelcontextprotocol/inspector "$@" \
+  uv run --directory "$REPO" python "$server_abs"
