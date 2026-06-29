@@ -45,7 +45,6 @@ from anthropic.types.beta import (
 from .types import AnyMessage
 from typing import Protocol, TypeGuard, Literal, cast, Mapping
 from .pricing import PRICING_PER_MILLION
-from .defaults import model
 import json
 
 RESET = "\033[0m"
@@ -76,7 +75,7 @@ def format_usage(message: AnyMessage) -> str:
     cache_read = usage.cache_read_input_tokens or 0
     total_tokens = input_tokens + cache_creation + cache_read + output_tokens
 
-    pricing = PRICING_PER_MILLION.get(model)
+    pricing = PRICING_PER_MILLION.get(message.model)
 
     if pricing:
         rate = pricing["input"] / 1_000_000
@@ -400,7 +399,9 @@ class StreamConsoleRenderer:
 
         if self.eager_by_tool_name.get(tool_name, False):
             self.eager_indices.add(index)
-            self._status(f"Generating tool use `{tool_name}` arguments...", CYAN, before)
+            self._status(
+                f"Generating tool use `{tool_name}` arguments...", CYAN, before
+            )
         else:
             self._status(f"Using tool `{tool_name}`...", CYAN, before)
 
