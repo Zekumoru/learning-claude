@@ -27,7 +27,7 @@ tmux new -s claude         # session must be named "claude"
 claude .                   # run Claude Code inside this pane
 ```
 
-A stop hook in `.claude/settings.json` automatically runs `capture-usage.sh` after every turn — it sends `/usage` to the tmux pane and saves the output so `usage-server` can read it instantly.
+A stop hook in `.claude/settings.json` automatically runs `capture-usage.sh` after every turn — it sends `/usage` to the tmux pane and saves the output to `.claude/cc-usage.txt` so `usage-server` can read it instantly.
 
 ## MCP servers
 
@@ -84,6 +84,13 @@ Numbered directories under `playground/` follow the course sequence:
 | `03_streaming/` | Streaming and structured data |
 | `04_evaluation/` | Evaluation workflow, dataset generation, HTML report |
 | `05_prompt_engineering/` | PromptEvaluator class for iterative prompt improvement |
+| `06_tools/` | Tool use chatbots (tools imported from `common/`) |
+| `07_rag/` | RAG pipeline: chunking, search, and RAG-powered chatbot |
+| `08_claude/` | Claude features: extended thinking, vision, PDF, citations, caching, code execution |
+| `09_mcp/` | MCP: tools, resources, prompts, server inspector, client; Claude Code & computer use |
+| `10_agent/` | Agents & workflows (concept README): parallelization, chaining, routing, tools, environment inspection |
+
+Sections `09_mcp/` and `10_agent/` include a `README.md` with concept notes; `10_agent/` is theory-only (no runnable script).
 
 Run any exercise with uv (no separate install needed):
 
@@ -118,13 +125,18 @@ experiments/
 └── token-harbor/    # token-harbor — all-time cost dashboard
     └── mcp-token-harbor.py
 playground/          # course exercises and Agent SDK experiments
-├── 01_first_request/
-├── 02_chat/
-├── 03_streaming/
-├── 04_evaluation/
-├── 05_prompt_engineering/
-├── common/          # shared utilities
-├── agent.ts         # TypeScript agent (run with: pnpm start-agent)
-├── agent.py         # Python agent (run with: uv run playground/agent.py)
+├── 01_first_request/   # first API request
+├── 02_chat/            # chat, system prompts, temperature
+├── 03_streaming/       # streaming and structured data
+├── 04_evaluation/      # evaluation workflow, dataset generation, HTML report
+├── 05_prompt_engineering/  # PromptEvaluator: dataset generation, concurrent grading
+├── 06_tools/           # tool use chatbots
+├── 07_rag/             # RAG pipeline: chunking, search, RAG chatbot
+├── 08_claude/          # Claude features: thinking, vision, PDF, citations, caching
+├── 09_mcp/             # MCP server/client, inspector, prompts
+├── 10_agent/           # agents & workflows (concept notes)
+├── common/             # shared utilities, tools, and RAG infrastructure
+├── agent.ts            # TypeScript agent (run with: pnpm start-agent)
+├── agent.py            # Python agent (run with: uv run playground/agent.py)
 └── utils.ts
 ```
