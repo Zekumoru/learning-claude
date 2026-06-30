@@ -1,6 +1,7 @@
 from typing import Annotated
 from pydantic import Field
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.prompts import base
 
 # To run the MCP Inspector: uv run mcp dev playground/09_mcp/server.py
 mcp = FastMCP("DocumentMCP", log_level="ERROR")
@@ -74,6 +75,26 @@ def fetch_doc(doc_id: str) -> str:
     if doc_id not in docs:
         raise ValueError(f"Doc with id '{doc_id}' not found")
     return docs[doc_id]
+
+
+@mcp.prompt(
+    name="format",
+    description="Rewrites the contents of the document in Markdown format",
+)
+def format_document(
+    doc_id: Annotated[str, Field(description="Id of the document to format")],
+) -> list[base.Message]:
+    prompt = f"""\
+Your goal is to reformat the document with id '{doc_id}' using Markdown syntax.
+
+Add headers, bullet points, tables, code blocks, and any other Markdown formatting \
+that makes the content clearer and well-structured.
+
+Use the `edit_document` tool to apply your changes, make as many calls as needed. \
+Edit the document directly; do not print the reformatted text in your reply.
+"""
+    messages: list[base.Message] = [base.UserMessage(prompt)]
+    return messages
 
 
 if __name__ == "__main__":
