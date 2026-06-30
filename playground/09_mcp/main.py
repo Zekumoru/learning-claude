@@ -11,12 +11,14 @@ from anthropic.types import (
 )
 from mcp.types import TextContent, Tool
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import merge_completers
 
 from ..common.chat import add_assistant_message, add_user_message, max_tokens
 from ..common.renderer import CYAN, GREEN, MAGENTA, YELLOW, color, format_usage
 from ..common.usage_tracker import init_db, on_usage
 from .client import MCPClient
-from .mentions import inject_mentions, prompt_user
+from .commands import CommandCompleter, expand_command, parse_command
+from .mentions import DocumentCompleter, inject_mentions, prompt_user
 
 model: ModelParam = "claude-haiku-4-5"
 
@@ -42,12 +44,16 @@ async def run_turn(
         async with client.messages.stream(
             model=model, max_tokens=max_tokens, messages=messages, tools=tools
         ) as stream:
+            printed_header = False
             if stream.text_stream:
                 print(color("\n[Response]", GREEN))
+                printed_header = True
 
             async for text in stream.text_stream:
                 print(text, end="", flush=True)
-            print()
+
+            if printed_header:
+                print()
             final = await stream.get_final_message()
 
         add_assistant_message(messages, final)
@@ -94,6 +100,13 @@ async def main() -> None:
     ) as mcp:
         tools = [to_anthropic_tool(tool) for tool in await mcp.list_tools()]
         doc_ids: list[str] = await mcp.read_resource("docs://documents")
+        prompts = await mcp.list_prompts()
+        completer = merge_completers(
+            [
+                DocumentCompleter(doc_ids),
+                CommandCompleter([p.name for p in prompts], doc_ids),
+            ]
+        )
 
         print(
             color(
@@ -103,13 +116,23 @@ async def main() -> None:
         )
 
         while True:
-            user_input = await prompt_user(session, doc_ids)
+            user_input = await prompt_user(session, completer)
 
             if user_input.strip().lower() == "exit":
                 break
 
-            prompt = await inject_mentions(mcp, user_input)
-            add_user_message(messages, prompt)
+            parsed = parse_command(user_input)
+            if parsed is not None:
+                command, arg_values = parsed
+                prompt_messages = await expand_command(
+                    mcp, session, command, arg_values, prompts
+                )
+                if prompt_messages is None:
+                    continue
+                messages.extend(prompt_messages)
+            else:
+                prompt = await inject_mentions(mcp, user_input)
+                add_user_message(messages, prompt)
 
             await run_turn(mcp, client, messages, tools)
             print()

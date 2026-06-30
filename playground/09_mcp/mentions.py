@@ -5,8 +5,10 @@ from mcp import McpError
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import ANSI
 
 from .client import MCPClient
+from ..common.renderer import CYAN, color
 
 # @doc_id -> letters, digits, dot, dash, underscore (covers "report.pdf" etc.)
 MENTION_PATTERN = re.compile(r"@([\w.\-]+)")
@@ -31,9 +33,9 @@ class DocumentCompleter(Completer):
 
 
 async def prompt_user(
-    session: PromptSession[str], doc_ids: list[str], message: str = "|: "
+    session: PromptSession[str], completer: Completer, message: str = color("|: ", CYAN)
 ) -> str:
-    return await session.prompt_async(message, completer=DocumentCompleter(doc_ids))
+    return await session.prompt_async(ANSI(message), completer=completer)
 
 
 async def inject_mentions(client: MCPClient, user_input: str) -> str:

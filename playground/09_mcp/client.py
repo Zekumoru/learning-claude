@@ -8,7 +8,7 @@ from typing import Any, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import CallToolResult, TextResourceContents, Tool
+from mcp.types import CallToolResult, Prompt, PromptMessage, TextResourceContents, Tool
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,6 +65,16 @@ class MCPClient:
                 raise ValueError(
                     f"Unsupported resource content for {uri}: {type(resource).__name__}"
                 )
+
+    async def list_prompts(self) -> list[Prompt]:
+        result = await self.session().list_prompts()
+        return result.prompts
+
+    async def get_prompt(
+        self, prompt_name: str, args: dict[str, str]
+    ) -> list[PromptMessage]:
+        result = await self.session().get_prompt(prompt_name, args)
+        return result.messages
 
     async def __aenter__(self) -> Self:
         await self.connect()
