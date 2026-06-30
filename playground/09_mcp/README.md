@@ -246,3 +246,76 @@ Other things worth carrying forward:
   completion; completers run per-keystroke and yield the current candidate set.
 - **`Annotated[str, Field(...)]`** for parameter metadata, not `= Field(...)`.
 - Prompt message types live under `mcp.server.fastmcp.prompts.base`.
+
+---
+
+## Using this server with Claude Code (a second host)
+
+Everything above wires the server into **our own** host (`main.py`). But **Claude Code
+is also an MCP host** — it has an MCP client built in. So the same `server.py` plugs
+straight into Claude Code with **zero edits**. That's the whole point of the protocol:
+the server is the portable unit; hosts are interchangeable.
+
+What we did *not* write this time: no `to_anthropic_tool`, no `run_turn` loop, no `@`
+completer, no `/` expansion, no Anthropic client. All of that is the host's job, and
+Claude Code already does it. We only registered the server.
+
+### Register it (local scope)
+
+```bash
+claude mcp add --scope local docs -- uv run playground/09_mcp/server.py
+```
+
+- `--scope local` keeps it private to you in this project (stored in `~/.claude.json`),
+  not committed — right for a learning exercise. (Project scope would write to
+  `.mcp.json` and be shared/committed; user scope is global.)
+- `--` separates Claude Code's flags from the **command that launches the server**.
+- Use `uv run` (not bare `python3`) so the server's `mcp` + `pydantic` deps resolve
+  from the project's uv environment. cwd is the repo root, same as `.mcp.json` entries.
+- `claude mcp get docs` shows **`Status: ✔ Connected`** once it handshakes — that alone
+  proves the server is valid under Claude Code's client.
+- A server added mid-session isn't loaded until you **restart Claude Code** (which then
+  prompts to approve the local server).
+- Remove when done: `claude mcp remove docs -s local`.
+
+### How our three primitives surface in Claude Code
+
+| Primitive (`server.py`) | In Claude Code |
+|---|---|
+| tools | `mcp__docs__read_doc_contents`, `mcp__docs__edit_document` — tools Claude calls |
+| prompt `format` | slash command `/mcp__docs__format <doc_id>` |
+| resource `docs://documents` | `@`-mentionable (type `@`, then `docs`) |
+
+`/mcp` lists the server with its tools/resources/prompts.
+
+### The `@`-mention gotchas (important)
+
+Two things bite people here:
+
+1. **The trigger is `@`, not `docs://`.** Typing `docs://` does nothing. You start with
+   `@` — which opens a picker that merges *local files* **and** *MCP resources*. Type
+   `@` then `docs` to filter down to the MCP resource; selecting it inserts
+   `@docs:docs://documents`.
+2. **Only the direct resource is mentionable, not individual docs.** The `@` picker is
+   populated by MCP's `resources/list`, which returns only **concrete** resources —
+   `docs://documents`. The **templated** `docs://documents/{doc_id}` lives behind a
+   separate `resources/templates/list` call and is **not** enumerated, so there's no
+   per-file dropdown. Mentioning `docs://documents` injects the **JSON index of
+   filenames**, not any single document's text.
+
+This is the key contrast with our own host: in `main.py` we *invented* the convention
+"`@report.pdf` → read `docs://documents/report.pdf`" inside `inject_mentions`. That was
+**host-specific glue**, not a server capability — Claude Code knows nothing about it.
+Same server, different host, different `@` behavior.
+
+To pull a specific document's contents in Claude Code, don't use `@` — just ask
+("read spec.txt") and Claude calls the **`read_doc_contents` tool**. If you wanted real
+per-file `@`-mentions there, you'd change the **server** to expose each document as its
+own concrete resource instead of a template.
+
+### One persistence caveat
+
+`docs` is an in-memory dict, and each Claude Code session spawns its own server
+subprocess. So `edit_document` changes (e.g. running `/mcp__docs__format report.pdf`)
+last for the session but reset to the original stub on restart — nothing is written to
+disk.
