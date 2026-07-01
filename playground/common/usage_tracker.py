@@ -23,6 +23,31 @@ def init_db() -> None:
         """)
 
 
+def record_usage(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_creation_tokens: int,
+    cache_read_tokens: int,
+    cost: float,
+) -> float:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO usage (model, input_tokens, output_tokens, "
+            "cache_creation_tokens, cache_read_tokens, cost) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                model,
+                input_tokens,
+                output_tokens,
+                cache_creation_tokens,
+                cache_read_tokens,
+                cost,
+            ),
+        )
+        total: float = conn.execute("SELECT SUM(cost) FROM usage").fetchone()[0]
+    return total
+
+
 def on_usage(message: AnyMessage) -> None:
     usage = message.usage
     input_tokens = usage.input_tokens
@@ -42,18 +67,8 @@ def on_usage(message: AnyMessage) -> None:
         + cache_read * rate * 0.1
     )
 
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            "INSERT INTO usage (model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cost) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                message.model,
-                input_tokens,
-                output_tokens,
-                cache_creation,
-                cache_read,
-                cost,
-            ),
-        )
-        total: float = conn.execute("SELECT SUM(cost) FROM usage").fetchone()[0]
+    total = record_usage(
+        message.model, input_tokens, output_tokens, cache_creation, cache_read, cost
+    )
 
     print(color(f"[All-time: ${total:.2f}]", YELLOW))

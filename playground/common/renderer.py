@@ -19,6 +19,8 @@ from anthropic.types import (
     TextCitation,
     CitationPageLocation,
     CitationCharLocation,
+    Usage,
+    ModelParam,
 )
 from anthropic.lib.streaming import (
     MessageStream,
@@ -39,11 +41,11 @@ from anthropic.types.beta import (
     BetaTextDelta,
     BetaInputJSONDelta,
     BetaThinkingDelta,
-    BetaCitationsDelta,
     BetaSignatureDelta,
+    BetaUsage,
 )
 from .types import AnyMessage
-from typing import Protocol, TypeGuard, Literal, cast, Mapping
+from typing import Protocol, TypeGuard, Literal, cast, Mapping, Any
 from .pricing import pricing_for
 import json
 
@@ -67,26 +69,39 @@ def supports_model_dump_json(value: object) -> TypeGuard[SupportsModelDumpJson]:
     return hasattr(value, "model_dump_json")
 
 
-def format_usage(message: AnyMessage) -> str:
-    usage = message.usage
-    input_tokens = usage.input_tokens
-    output_tokens = usage.output_tokens
-    cache_creation = usage.cache_creation_input_tokens or 0
-    cache_read = usage.cache_read_input_tokens or 0
-    total_tokens = input_tokens + cache_creation + cache_read + output_tokens
-
-    pricing = pricing_for(message.model)
-
-    if pricing:
-        rate = pricing["input"] / 1_000_000
-        input_cost = input_tokens * rate
-        output_cost = output_tokens * pricing["output"] / 1_000_000
-        cache_creation_cost = cache_creation * rate * 1.25
-        cache_read_cost = cache_read * rate * 0.1
-        total_cost = input_cost + output_cost + cache_creation_cost + cache_read_cost
-        cost_str = f" (${total_cost:.6f})"
+def format_usage(
+    model: ModelParam,
+    usage: Usage | BetaUsage | dict[str, Any],
+    cost: float | None = None,  # if cost is already known
+) -> str:
+    if isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cache_creation = usage.get("cache_creation_input_tokens", 0)
+        cache_read = usage.get("cache_read_input_tokens", 0)
     else:
-        cost_str = ""
+        input_tokens = usage.input_tokens
+        output_tokens = usage.output_tokens
+        cache_creation = usage.cache_creation_input_tokens or 0
+        cache_read = usage.cache_read_input_tokens or 0
+
+    total_tokens = input_tokens + cache_creation + cache_read + output_tokens
+    total_cost = cost or -1
+
+    if cost is None:
+        pricing = pricing_for(model)
+
+        if pricing:
+            rate = pricing["input"] / 1_000_000
+            input_cost = input_tokens * rate
+            output_cost = output_tokens * pricing["output"] / 1_000_000
+            cache_creation_cost = cache_creation * rate * 1.25
+            cache_read_cost = cache_read * rate * 0.1
+            total_cost = (
+                input_cost + output_cost + cache_creation_cost + cache_read_cost
+            )
+
+    cost_str = f" (${total_cost:.6f})" if total_cost >= 0 else ""
 
     parts = [f"{input_tokens} in", f"{output_tokens} out"]
     if cache_creation:
@@ -101,7 +116,7 @@ def format_usage(message: AnyMessage) -> str:
 
 
 def print_usage(message: Message) -> None:
-    print(format_usage(message))
+    print(format_usage(message.model, message.usage))
 
 
 class ConsoleWriter:
@@ -219,7 +234,7 @@ class MessageConsoleRenderer:
         self.writer.newline()
 
     def usage(self, message: AnyMessage, *, before: int = 1) -> None:
-        self.writer.line(format_usage(message), before=before)
+        self.writer.line(format_usage(message.model, message.usage), before=before)
 
     def max_tokens_error(self) -> None:
         self.writer.line("Error: max_tokens reached")

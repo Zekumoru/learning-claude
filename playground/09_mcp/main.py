@@ -58,7 +58,7 @@ async def run_turn(
 
         add_assistant_message(messages, final)
         print()
-        print(format_usage(final))
+        print(format_usage(final.model, final.usage))
         on_usage(final)
 
         tool_uses = [
