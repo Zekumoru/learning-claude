@@ -12,7 +12,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
 )
 from ..common.renderer import format_usage, color, GREEN, CYAN, YELLOW, MAGENTA
-from ..common.usage_tracker import init_db, record_usage
+from ..common.usage_tracker import init_db, record_usage, get_balance, set_balance
 
 options = ClaudeAgentOptions(
     model="claude-haiku-4-5",
@@ -67,11 +67,12 @@ async def main() -> None:
                     cache_read_tokens=int(stats.get("cache_read_input_tokens", 0)),
                     cost=cost or 0.0,
                 )
+                balance = get_balance()
                 print(color("[Done]", MAGENTA))
                 print(f"  turns:    {num_turns}")
                 print(f"  cost:     ${cost:.4f}")
                 print(f"  usage:    {format_usage(model, stats, cost=-1)}")
-                print(f"  all-time: ${all_time_cost:.2f}")
+                print(f"  all-time: ${all_time_cost:.2f} (balance: ${balance:.2f})")
 
 
 if __name__ == "__main__":

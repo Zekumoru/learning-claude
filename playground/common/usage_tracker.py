@@ -19,8 +19,38 @@ def init_db() -> None:
                 cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
                 cache_read_tokens INTEGER NOT NULL DEFAULT 0,
                 cost REAL NOT NULL
-            ) 
+            )
         """)
+
+        # CHECK (id = 1) forces single row
+        conn.execute("""
+                CREATE TABLE IF NOT EXISTS balance (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    amount REAL NOT NULL
+                )
+        """)
+
+
+def set_balance(amount: float) -> None:
+    """Snapshot the money you have left right now."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO balance (id, amount) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET amount = excluded.amount",
+            (amount,),
+        )
+
+
+def get_balance() -> float | None:
+    """None means you haven't set a balance yet."""
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute("SELECT amount FROM balance WHERE id = 1").fetchone()
+    return row[0] if row else None
+
+
+def total_spent() -> float:
+    with sqlite3.connect(DB_PATH) as conn:
+        return conn.execute("SELECT COALESCE(SUM(cost), 0) FROM usage").fetchone()[0]
 
 
 def record_usage(
@@ -44,6 +74,7 @@ def record_usage(
                 cost,
             ),
         )
+        conn.execute("UPDATE balance SET amount = amount - ? WHERE id = 1", (cost,))
         total: float = conn.execute("SELECT SUM(cost) FROM usage").fetchone()[0]
     return total
 
