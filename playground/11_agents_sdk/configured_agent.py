@@ -9,8 +9,10 @@ from claude_agent_sdk import (
     TextBlock,
     ToolUseBlock,
 )
+
 from ..common.renderer import color, GREEN, CYAN, MAGENTA, RED
-from ..common.usage_tracker import init_db, record_usage, get_balance
+from ..common.usage_tracker import init_db
+from .shared import record_result
 
 options = ClaudeAgentOptions(
     model="claude-haiku-4-5",
@@ -29,23 +31,6 @@ options = ClaudeAgentOptions(
     max_turns=5,
     max_budget_usd=0.10,  # hard stop by putting cheap ceiling,
 )
-
-
-def record_result(message: ResultMessage) -> str:
-    """Record a run in the ledger; return a formatted all-time/balance line"""
-    stats = message.usage or {}
-    model = options.model or "unknown"
-    all_time = record_usage(
-        model=model,
-        input_tokens=int(stats.get("input_tokens", 0)),
-        output_tokens=int(stats.get("output_tokens", 0)),
-        cache_creation_tokens=int(stats.get("cache_creation_input_tokens", 0)),
-        cache_read_tokens=int(stats.get("cache_read_input_tokens", 0)),
-        cost=message.total_cost_usd or 0.0,
-    )
-    balance = get_balance()
-    tail = f" (balance: ${balance:.2f})" if balance is not None else ""
-    return f"All-time: ${all_time:.2f}{tail}"
 
 
 async def main() -> None:
@@ -75,7 +60,7 @@ async def main() -> None:
                 ceiling = options.max_budget_usd or 0.0
                 print(color("[Budget stop]", RED))
                 print(f"Hit the ${ceiling:.2f} ceiling (spent ${cost or 0.0:.4f})")
-                print(record_result(result))
+                print(record_result(options.model or "unknown", result))
 
             # Any other non-success ending (max_turns, execution error)
             case ResultMessage(subtype=subtype, num_turns=turns) as result if (
@@ -83,14 +68,14 @@ async def main() -> None:
             ):
                 print(color(f"[Ended: {subtype}]", RED))
                 print(f"Turns: {turns}")
-                print(record_result(result))
+                print(record_result(options.model or "unknown", result))
 
             # Normal completion
             case ResultMessage(num_turns=turns, total_cost_usd=cost) as result:
                 print(color("[Done]", MAGENTA))
                 print(f"Turns: {turns}")
                 print(f"Cost: ${cost or 0.0:.4f}")
-                print(record_result(result))
+                print(record_result(options.model or "unknown", result))
 
 
 if __name__ == "__main__":

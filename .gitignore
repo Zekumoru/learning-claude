@@ -27,6 +27,7 @@ results*.html
 articles/
 # Ignore test images in section 8
 **/08_claude/assets/
+**/11_agents_sdk/sandbox/
 
 # Logging
 *.db

@@ -7,11 +7,13 @@ exposed as a Python library. Instead of hand-writing the tool-use loop (call Cla
 run the tool it asked for → feed the result back → repeat), the SDK **runs that whole
 loop for you** and hands back a stream of messages describing what happened.
 
-So far this section covers two scripts:
+So far this section covers three scripts:
 
 - **`first_agent.py`** — the minimal agent: one `query()` call, iterate the messages.
 - **`configured_agent.py`** — the same shape, but driven by a fully-specified
   `ClaudeAgentOptions` (restricted toolset, preset system prompt, budget guard).
+- **`guarded_writes.py`** — hands the agent *mutating* tools (`Write`, `Bash`) and puts
+  a **`can_use_tool`** callback in front of them, run through a `ClaudeSDKClient`.
 
 ---
 
@@ -164,6 +166,73 @@ a silent, non-interactive, read-only agent: the allowed tools run without prompt
 
 ---
 
+## Built-in tools & the permission gate
+
+Everything above kept the agent to **read-only** tools, so no permission decision ever
+happened. `guarded_writes.py` finally hands it **mutating** tools and owns the decision.
+
+### The catalog, split by what it does to the world
+
+| Read-only (observe) | Mutating (change state) |
+| --- | --- |
+| `Glob`, `Grep`, `Read`, `WebFetch`, `WebSearch` | `Write`, `Edit`, `Bash`, `NotebookEdit` |
+
+That split *is* the permission story: read-only tools are safe to auto-run; mutating tools
+are the ones Claude Code normally stops and asks you about.
+
+### The four levers, and which one to reach for
+
+| Lever | Effect |
+| --- | --- |
+| **`tools`** | What tools *exist* at all this session. |
+| **`allowed_tools`** | Of those, which **skip the prompt** and auto-run. |
+| **`can_use_tool`** | Your callback for everything else — the gate. |
+| **`disallowed_tools`** | **Erased** — the model doesn't know the tool exists. |
+
+The tell between the last two: a `can_use_tool` **deny** produces a refusal Claude *sees and
+reasons about* ("I couldn't write there"); a `disallowed_tools` removal means the tool simply
+isn't in its vocabulary — it never tries.
+
+### `can_use_tool` — the permission prompt as code
+
+It's the interactive "allow this tool? y/n" rewritten as an async function:
+
+```python
+async def can_use_tool(tool_name, tool_input, context) -> PermissionResult:
+    match tool_name:
+        case "Write":
+            target = Path(tool_input.get("file_path", "")).resolve()
+            if target.is_relative_to(SANDBOX.resolve()):
+                return PermissionResultAllow()
+            return PermissionResultDeny(message="Writes only allowed inside sandbox/")
+        case _:
+            return PermissionResultAllow()
+```
+
+Because it's code, it's *smarter than a click*: it sees the tool's name **and input**, so it
+can allow `Write` only inside a sandbox, allow only read-only `Bash` commands, log every
+decision, or even rewrite the input (`PermissionResultAllow(updated_input=...)`). It fires
+**only** for tools that fall through — anything in `allowed_tools` never reaches it.
+
+### It needs `ClaudeSDKClient`, not `query()`
+
+A permission callback has to send its answer **back** to Claude mid-run — a two-way channel.
+The top-level `query()` with a string prompt is one-shot; it closes the input pipe as soon as
+the prompt is sent, so the callback's reply has nowhere to go (`Error: Stream closed`).
+**`ClaudeSDKClient`** holds the pipe open for the whole session:
+
+```python
+async with ClaudeSDKClient(options=options) as client:
+    await client.query(prompt)
+    async for message in client.receive_response():
+        ...   # same match arms as query()
+```
+
+Rule of thumb: `query()` for fire-and-forget; **`ClaudeSDKClient`** the moment you need
+interactive control (permission callbacks, follow-ups, interrupts).
+
+---
+
 ## Cheat-sheet
 
 | Concept | One-liner |
@@ -178,6 +247,9 @@ a silent, non-interactive, read-only agent: the allowed tools run without prompt
 | **`setting_sources`** | Must include `"project"` to load `CLAUDE.md`; `[]` = isolation. |
 | **`max_budget_usd`** | Hard cost ceiling → `subtype="error_max_budget_usd"`. |
 | **`dontAsk`** | Don't prompt; deny anything not pre-approved — the script-friendly mode. |
+| **`can_use_tool`** | The permission prompt as an async callback — allow/deny per call, sees tool input. |
+| **`disallowed_tools`** | Tool erased from context — model never attempts it (vs. deny, which it sees). |
+| **`ClaudeSDKClient`** | Streaming client; required for `can_use_tool` — `query()` can't carry the callback. |
 
 The throughline: the SDK turns "an agent" from *code you write around the Messages API*
 into *one configured `query()` call*. Your job shifts from running the loop to **specifying
