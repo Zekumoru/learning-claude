@@ -5,8 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "anthropic>=0.109.1",
-    "claude-agent-sdk>=0.2.99",
+    "anthropic>=0.115.0",
+    "claude-agent-sdk>=0.2.110",
     "numpy>=2.5.0",
     "prompt-toolkit>=3.0.52",
     "python-dotenv>=1.2.2",

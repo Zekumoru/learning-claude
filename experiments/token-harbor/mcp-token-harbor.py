@@ -11,6 +11,13 @@ LITELLM_PRICING_URL = (
 )
 
 FALLBACK_PRICES = {
+    # Promotional launch pricing through 2026-08-31; reverts to 3 / 15 after.
+    "claude-sonnet-5": {
+        "input_cost_per_token": 2e-6,
+        "output_cost_per_token": 10e-6,
+        "cache_creation_input_token_cost": 2.5e-6,
+        "cache_read_input_token_cost": 0.20e-6,
+    },
     "claude-sonnet-4-6": {
         "input_cost_per_token": 3e-6,
         "output_cost_per_token": 15e-6,
@@ -18,10 +25,10 @@ FALLBACK_PRICES = {
         "cache_read_input_token_cost": 0.30e-6,
     },
     "claude-opus-4-8": {
-        "input_cost_per_token": 15e-6,
-        "output_cost_per_token": 75e-6,
-        "cache_creation_input_token_cost": 18.75e-6,
-        "cache_read_input_token_cost": 1.50e-6,
+        "input_cost_per_token": 5e-6,
+        "output_cost_per_token": 25e-6,
+        "cache_creation_input_token_cost": 6.25e-6,
+        "cache_read_input_token_cost": 0.50e-6,
     },
     "claude-haiku-4-5-20251001": {
         "input_cost_per_token": 0.80e-6,
