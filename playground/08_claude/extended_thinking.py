@@ -4,15 +4,16 @@ from anthropic.types import (
     TextBlock,
     RedactedThinkingBlock,
 )
-from ..common.chat import chat, max_tokens, add_user_message
+from ..common.chat import chat, add_user_message
 from ..common.renderer import print_usage
 
-budget_tokens = int(max_tokens / 2)
 messages: list[MessageParam] = []
 
 add_user_message(messages, "How many r's in the word 'strawberry'?")
 
-response = chat(messages, thinking={"type": "enabled", "budget_tokens": budget_tokens})
+# 4.6+ models (incl. Sonnet 5) replace the legacy {type: "enabled", budget_tokens}
+# config with adaptive thinking; the model chooses how much to think.
+response = chat(messages, thinking={"type": "adaptive"})
 
 print_usage(response)
 
