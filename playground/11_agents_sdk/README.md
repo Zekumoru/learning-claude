@@ -7,13 +7,15 @@ exposed as a Python library. Instead of hand-writing the tool-use loop (call Cla
 run the tool it asked for → feed the result back → repeat), the SDK **runs that whole
 loop for you** and hands back a stream of messages describing what happened.
 
-So far this section covers three scripts:
+So far this section covers four scripts:
 
 - **`first_agent.py`** — the minimal agent: one `query()` call, iterate the messages.
 - **`configured_agent.py`** — the same shape, but driven by a fully-specified
   `ClaudeAgentOptions` (restricted toolset, preset system prompt, budget guard).
 - **`guarded_writes.py`** — hands the agent *mutating* tools (`Write`, `Bash`) and puts
   a **`can_use_tool`** callback in front of them, run through a `ClaudeSDKClient`.
+- **`multi_turn.py`** — one open `ClaudeSDKClient` session with **two `query()` calls**,
+  where the follow-up refers back to the first turn — proving the agent keeps context.
 
 ---
 
@@ -233,6 +235,51 @@ interactive control (permission callbacks, follow-ups, interrupts).
 
 ---
 
+## Multi-turn conversations
+
+`guarded_writes.py` used `ClaudeSDKClient` only because the permission callback forced it.
+`multi_turn.py` uses it for what it's actually *for*: keeping **one session open across
+several turns**, so the agent remembers earlier turns instead of starting cold each time.
+
+### `query()` (bundled) vs `client.query()` + `receive_response()` (split)
+
+The top-level `query()` does **send *and* receive in one** — `async for message in query(...)`.
+`ClaudeSDKClient` **splits** those into two calls, and that split is the whole point:
+
+- **`await client.query(text)`** — *push* a turn into the input pipe. It returns
+  **immediately**; it does *not* wait for Claude's answer. Nothing has come back yet.
+- **`client.receive_response()`** — *pull* the messages for that turn, one at a time,
+  until the terminal `ResultMessage`. Then the `async for` ends and control returns to you.
+
+Because sending is separate from receiving, you can `query()` **again** for a follow-up on
+the same open connection. That's impossible with the bundled one-shot `query()`.
+
+### The shape: send → drain → send → drain
+
+```python
+async with ClaudeSDKClient(options=options) as client:   # one open session
+    await client.query("List the Python files here.")     # turn 1: push
+    result = await drain_turn(client)                     #         pull to ResultMessage
+
+    await client.query("Which of those is the shortest?") # turn 2: "those" == turn 1
+    result = await drain_turn(client)                     #         pull again
+```
+
+`drain_turn` is just the message-`match` loop factored into a helper that returns the turn's
+`ResultMessage` (so both turns reuse it and each can be logged to the ledger). The key
+gotcha: **`receive_response()` cuts at *one* turn's `ResultMessage`** — so the pattern is
+send → drain → send → drain, not one big loop. (The lower-level `receive_messages()` would
+stream past the boundary into the next turn; `receive_response()` is the wrapper that stops.)
+
+### Why it works: the session stays open
+
+`query()` (top-level) closes the input pipe after one prompt → one-shot, no memory of a next
+question. `ClaudeSDKClient` holds the pipe open for the whole `async with` block, so turn 2's
+`"those"` resolves against turn 1's context. This is the difference between a batch tool and
+an agent you can actually *talk to* — and the foundation for interrupts later.
+
+---
+
 ## Cheat-sheet
 
 | Concept | One-liner |
@@ -250,6 +297,9 @@ interactive control (permission callbacks, follow-ups, interrupts).
 | **`can_use_tool`** | The permission prompt as an async callback — allow/deny per call, sees tool input. |
 | **`disallowed_tools`** | Tool erased from context — model never attempts it (vs. deny, which it sees). |
 | **`ClaudeSDKClient`** | Streaming client; required for `can_use_tool` — `query()` can't carry the callback. |
+| **`client.query()`** | *Sends* one turn and returns immediately (doesn't wait). Not the same as top-level `query()`. |
+| **`receive_response()`** | *Pulls* one turn's messages until its `ResultMessage`, then stops. Send → drain → repeat. |
+| **Multi-turn** | Keep one `ClaudeSDKClient` open; each `query()`/drain pair is a turn that remembers the last. |
 
 The throughline: the SDK turns "an agent" from *code you write around the Messages API*
 into *one configured `query()` call*. Your job shifts from running the loop to **specifying
