@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash experiments/usage-monitor/capture-usage.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/experiments/usage-monitor/capture-usage.sh\""
           }
         ]
       }
