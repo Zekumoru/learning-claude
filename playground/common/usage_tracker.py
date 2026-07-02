@@ -1,10 +1,15 @@
 import sqlite3
 from pathlib import Path
+from typing import Literal
 from .pricing import pricing_for
 from .renderer import color, YELLOW
 from .types import AnyMessage
 
 DB_PATH = Path(__file__).parent / "usage.db"
+
+# How a run is paid for: covered by the Claude subscription (Agent SDK usage)
+# or billed pay-as-you-go against a Claude Platform API key.
+Billing = Literal["subscription", "api"]
 
 
 def init_db() -> None:
@@ -18,7 +23,8 @@ def init_db() -> None:
                 output_tokens INTEGER NOT NULL,
                 cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
                 cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-                cost REAL NOT NULL
+                cost REAL NOT NULL,
+                billing TEXT NOT NULL DEFAULT 'api'
             )
         """)
 
@@ -48,9 +54,12 @@ def get_balance() -> float | None:
     return row[0] if row else None
 
 
-def total_spent() -> float:
+def total_spent(billing: Billing) -> float:
+    """All-time cost for one billing type (subscription usage or API spend)."""
     with sqlite3.connect(DB_PATH) as conn:
-        return conn.execute("SELECT COALESCE(SUM(cost), 0) FROM usage").fetchone()[0]
+        return conn.execute(
+            "SELECT COALESCE(SUM(cost), 0) FROM usage WHERE billing = ?", (billing,)
+        ).fetchone()[0]
 
 
 def record_usage(
@@ -60,11 +69,14 @@ def record_usage(
     cache_creation_tokens: int,
     cache_read_tokens: int,
     cost: float,
+    billing: Billing,
 ) -> float:
+    """Record one run; return the all-time cost for that run's billing type."""
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             "INSERT INTO usage (model, input_tokens, output_tokens, "
-            "cache_creation_tokens, cache_read_tokens, cost) VALUES (?, ?, ?, ?, ?, ?)",
+            "cache_creation_tokens, cache_read_tokens, cost, billing) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 model,
                 input_tokens,
@@ -72,10 +84,16 @@ def record_usage(
                 cache_creation_tokens,
                 cache_read_tokens,
                 cost,
+                billing,
             ),
         )
-        conn.execute("UPDATE balance SET amount = amount - ? WHERE id = 1", (cost,))
-        total: float = conn.execute("SELECT SUM(cost) FROM usage").fetchone()[0]
+        # Only real API spend draws down the money-left balance; subscription
+        # usage is covered by the plan and never touches it.
+        if billing == "api":
+            conn.execute("UPDATE balance SET amount = amount - ? WHERE id = 1", (cost,))
+        total: float = conn.execute(
+            "SELECT COALESCE(SUM(cost), 0) FROM usage WHERE billing = ?", (billing,)
+        ).fetchone()[0]
     return total
 
 
@@ -99,7 +117,13 @@ def on_usage(message: AnyMessage) -> None:
     )
 
     total = record_usage(
-        message.model, input_tokens, output_tokens, cache_creation, cache_read, cost
+        message.model,
+        input_tokens,
+        output_tokens,
+        cache_creation,
+        cache_read,
+        cost,
+        billing="api",
     )
 
-    print(color(f"[All-time: ${total:.2f}]", YELLOW))
+    print(color(f"[All-time API: ${total:.2f}]", YELLOW))

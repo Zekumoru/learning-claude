@@ -66,6 +66,7 @@ async def main() -> None:
                     ),
                     cache_read_tokens=int(stats.get("cache_read_input_tokens", 0)),
                     cost=cost or 0.0,
+                    billing="subscription",
                 )
                 balance = get_balance()
                 print(color("[Done]", MAGENTA))

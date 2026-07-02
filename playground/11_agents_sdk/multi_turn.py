@@ -14,7 +14,7 @@ from claude_agent_sdk import (
 
 from ..common.renderer import color, GREEN, CYAN, MAGENTA, RED
 from ..common.usage_tracker import init_db
-from .shared import record_result
+from ..common.agent_usage import record_result
 
 options = ClaudeAgentOptions(
     model="claude-haiku-4-5",
