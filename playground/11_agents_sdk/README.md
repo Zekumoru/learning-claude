@@ -7,7 +7,7 @@ exposed as a Python library. Instead of hand-writing the tool-use loop (call Cla
 run the tool it asked for → feed the result back → repeat), the SDK **runs that whole
 loop for you** and hands back a stream of messages describing what happened.
 
-So far this section covers four scripts:
+So far this section covers five scripts:
 
 - **`first_agent.py`** — the minimal agent: one `query()` call, iterate the messages.
 - **`configured_agent.py`** — the same shape, but driven by a fully-specified
@@ -16,6 +16,8 @@ So far this section covers four scripts:
   a **`can_use_tool`** callback in front of them, run through a `ClaudeSDKClient`.
 - **`multi_turn.py`** — one open `ClaudeSDKClient` session with **two `query()` calls**,
   where the follow-up refers back to the first turn — proving the agent keeps context.
+- **`streaming.py`** — flips **`include_partial_messages`** on and handles the raw
+  **`StreamEvent`** deltas, so the answer types itself out live instead of all at once.
 
 ---
 
@@ -280,6 +282,52 @@ an agent you can actually *talk to* — and the foundation for interrupts later.
 
 ---
 
+## Streaming output (live typing)
+
+By default the message stream is **coarse**: you get whole `AssistantMessage` objects, so the
+text only appears *after* the whole turn is generated — you stare at a blank screen while
+Claude thinks. `streaming.py` makes text appear **token by token** as it's produced. This is
+the same idea as raw-API streaming (section 03) — the incremental `content_block_delta` /
+`text_delta` events — just surfaced through the SDK.
+
+### The one switch, plus a new message type
+
+- **`include_partial_messages=True`** in `ClaudeAgentOptions` — opt in to the fine-grained
+  events. (Off by default because the coarse whole-message stream is what's easy to `match` on.)
+- **`StreamEvent`** — a new message type that now appears in the stream, carrying the raw
+  incremental update in `event: dict[str, Any]`.
+
+### Pulling the text out — you do it by hand
+
+The SDK hands you the **raw Anthropic API stream event** and stops there — its own dataclass
+comment literally says `event  # The raw Anthropic API stream event`, and the official example
+just `print(message)`s without extracting anything. There is **no typed helper** for the deltas;
+you dig into the dict yourself:
+
+```python
+case StreamEvent(event=event):
+    if event.get("type") == "content_block_delta":
+        delta = event.get("delta", {})
+        if delta.get("type") == "text_delta":
+            print(delta.get("text", ""), end="", flush=True)
+```
+
+- The stream carries several event *types* (`message_start`, `content_block_start`,
+  `content_block_delta`, …); only `content_block_delta` holds text fragments.
+- A delta can be `text_delta`, `thinking_delta`, or `input_json_delta` (tool args) — filter
+  to `text_delta` for prose.
+- **`end="", flush=True`** is what makes it *feel* live: no newline between fragments, and
+  `flush` defeats stdout buffering so each fragment hits the screen immediately.
+
+### The gotcha: don't double-print
+
+Turning partials on **doesn't remove** the whole-message events — the full `AssistantMessage`
+still arrives at the end of each block. So if you print deltas live *and* keep an
+`AssistantMessage` text arm, you'll print the answer twice. `streaming.py` prints the deltas
+and **omits** the `AssistantMessage` arm on purpose.
+
+---
+
 ## Cheat-sheet
 
 | Concept | One-liner |
@@ -300,6 +348,9 @@ an agent you can actually *talk to* — and the foundation for interrupts later.
 | **`client.query()`** | *Sends* one turn and returns immediately (doesn't wait). Not the same as top-level `query()`. |
 | **`receive_response()`** | *Pulls* one turn's messages until its `ResultMessage`, then stops. Send → drain → repeat. |
 | **Multi-turn** | Keep one `ClaudeSDKClient` open; each `query()`/drain pair is a turn that remembers the last. |
+| **`include_partial_messages`** | Opt in to fine-grained `StreamEvent`s for live token-by-token output. Off by default. |
+| **`StreamEvent`** | Carries the **raw** Anthropic stream event in `event` dict — no typed helper; pull `delta.text` yourself. |
+| **Live typing** | `print(text, end="", flush=True)` on each `text_delta`; omit the `AssistantMessage` arm to avoid double-print. |
 
 The throughline: the SDK turns "an agent" from *code you write around the Messages API*
 into *one configured `query()` call*. Your job shifts from running the loop to **specifying
