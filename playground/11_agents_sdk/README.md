@@ -7,7 +7,7 @@ exposed as a Python library. Instead of hand-writing the tool-use loop (call Cla
 run the tool it asked for → feed the result back → repeat), the SDK **runs that whole
 loop for you** and hands back a stream of messages describing what happened.
 
-So far this section covers six scripts:
+So far this section covers seven scripts:
 
 - **`first_agent.py`** — the minimal agent: one `query()` call, iterate the messages.
 - **`configured_agent.py`** — the same shape, but driven by a fully-specified
@@ -20,6 +20,8 @@ So far this section covers six scripts:
   **`StreamEvent`** deltas, so the answer types itself out live instead of all at once.
 - **`interrupts.py`** — kicks off a long streamed answer, then **`interrupt()`s** it
   mid-generation from a concurrent task — steering a *running* agent, not just configuring it.
+- **`plan_mode.py`** — starts locked in **`plan`** mode (proposes, writes nothing), then
+  **`set_permission_mode("acceptEdits")`** mid-session to unlock and execute the plan.
 
 ---
 
@@ -372,6 +374,35 @@ before it generates anything.)
   output count is only reliable on a *normal* finish — an early interrupt fires before `message_delta`,
   so output stays near zero. `total_cost_usd` on the `ResultMessage` still survives and is authoritative.
 
+### Plan mode: propose, then promote
+
+`set_permission_mode` shines with **`plan`** mode. In `plan` the agent is read-only-by-force —
+it can reason and *propose*, but **every mutating tool is frozen**, so it can't change anything.
+`plan_mode.py` uses it as a human-in-the-loop gate:
+
+```python
+options = ClaudeAgentOptions(..., permission_mode="plan")   # start locked
+
+async with ClaudeSDKClient(options=options) as client:
+    await client.query("Create notes.txt containing a haiku about the sea.")
+    await drain_turn(client)
+    assert not target.exists()               # turn 1 proposed; Write was blocked
+
+    await client.set_permission_mode("acceptEdits")   # review passed → unlock
+    await client.query("Looks good — go ahead and create it now.")
+    await drain_turn(client)
+    assert target.exists()                   # turn 2 executed on the same open session
+```
+
+The proof is two booleans: **`File exists after planning? False`** → **`File exists after
+executing? True`**, flipped by nothing but a mid-session mode change. Note `Write` must be in
+`tools` from the start (so it *exists* to unlock later); `acceptEdits` is what auto-approves it
+once you promote. This differs from `can_use_tool`, which decides *per call in code* — here a
+**human reviews the whole plan** before any tool runs at all.
+
+There's no special "exit plan mode" handshake in the SDK: `plan` just means tools don't execute,
+the agent replies with a plan as normal text, the turn ends, and you promote + re-query.
+
 ---
 
 ## Cheat-sheet
@@ -399,6 +430,7 @@ before it generates anything.)
 | **Live typing** | `print(text, end="", flush=True)` on each `text_delta`; omit the `AssistantMessage` arm to avoid double-print. |
 | **`interrupt()`** | Stop a running turn mid-flight; call it from a concurrent task while `receive_response()` drains. |
 | **`set_permission_mode()` / `set_model()`** | Change approval posture or model mid-session — control-channel methods, client-only. |
+| **`plan` mode** | Agent proposes but **no tool executes**; promote with `set_permission_mode("acceptEdits")` to run it. |
 | **Interrupt gotcha** | Ends as `error_during_execution` with empty `usage`; scrape tokens from stream events, cost survives. |
 
 The throughline: the SDK turns "an agent" from *code you write around the Messages API*
