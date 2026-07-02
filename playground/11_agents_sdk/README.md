@@ -7,7 +7,7 @@ exposed as a Python library. Instead of hand-writing the tool-use loop (call Cla
 run the tool it asked for → feed the result back → repeat), the SDK **runs that whole
 loop for you** and hands back a stream of messages describing what happened.
 
-So far this section covers five scripts:
+So far this section covers six scripts:
 
 - **`first_agent.py`** — the minimal agent: one `query()` call, iterate the messages.
 - **`configured_agent.py`** — the same shape, but driven by a fully-specified
@@ -18,6 +18,8 @@ So far this section covers five scripts:
   where the follow-up refers back to the first turn — proving the agent keeps context.
 - **`streaming.py`** — flips **`include_partial_messages`** on and handles the raw
   **`StreamEvent`** deltas, so the answer types itself out live instead of all at once.
+- **`interrupts.py`** — kicks off a long streamed answer, then **`interrupt()`s** it
+  mid-generation from a concurrent task — steering a *running* agent, not just configuring it.
 
 ---
 
@@ -328,6 +330,50 @@ and **omits** the `AssistantMessage` arm on purpose.
 
 ---
 
+## Runtime control: steering a live agent
+
+Everything so far configured the agent *before* it ran. `interrupts.py` shows the other half:
+the open `ClaudeSDKClient` pipe is a **control channel**, so you can send commands to an agent
+*while it works*. The client exposes (among others):
+
+| Method | Effect |
+| --- | --- |
+| **`await client.interrupt()`** | Stop the current turn mid-flight — even while a tool or generation is running (like hitting Esc in Claude Code). |
+| **`await client.set_permission_mode(mode)`** | Change the approval posture mid-session (e.g. start in `plan`, then promote to `acceptEdits`). |
+| **`await client.set_model(model)`** | Swap the model mid-conversation. |
+
+None of these exist on the one-shot `query()` — there's no channel to send the command back through.
+
+### Interrupt needs a *concurrent* task
+
+The catch: while you're iterating `receive_response()`, your code is **busy** draining messages —
+it can't also call `interrupt()`. So you split into two concurrent flows with `asyncio.create_task`:
+
+```python
+consume_task = asyncio.create_task(consume(client, ...))  # one flow: reads the agent
+await streaming_started.wait()                            # wait until text is actually flowing
+await asyncio.sleep(1.5)                                  # let a bit stream
+await client.interrupt()                                  # other flow: steers/stops it
+result = await consume_task                               # rejoin
+```
+
+`create_task` schedules the reader concurrently and returns immediately, freeing the main flow to
+sleep → interrupt → rejoin. (Trigger the interrupt off a real signal — an `asyncio.Event` set on
+the first `text_delta` — not a blind timer, or you may fire during startup latency and cut the run
+before it generates anything.)
+
+### Gotcha: an interrupt looks like an error, and zeroes out `usage`
+
+- **`subtype` is `error_during_execution`.** There's no dedicated "interrupted" subtype — an
+  aborted turn simply reports as a non-completed run. Expected, not a crash.
+- **`ResultMessage.usage` comes back empty** on an interrupt. To still show token counts, **scrape
+  them from the stream events** (which arrived before the cut): `message_start` carries
+  `input_tokens` + cache tokens; `message_delta` carries the final `output_tokens`. Note the
+  output count is only reliable on a *normal* finish — an early interrupt fires before `message_delta`,
+  so output stays near zero. `total_cost_usd` on the `ResultMessage` still survives and is authoritative.
+
+---
+
 ## Cheat-sheet
 
 | Concept | One-liner |
@@ -351,6 +397,9 @@ and **omits** the `AssistantMessage` arm on purpose.
 | **`include_partial_messages`** | Opt in to fine-grained `StreamEvent`s for live token-by-token output. Off by default. |
 | **`StreamEvent`** | Carries the **raw** Anthropic stream event in `event` dict — no typed helper; pull `delta.text` yourself. |
 | **Live typing** | `print(text, end="", flush=True)` on each `text_delta`; omit the `AssistantMessage` arm to avoid double-print. |
+| **`interrupt()`** | Stop a running turn mid-flight; call it from a concurrent task while `receive_response()` drains. |
+| **`set_permission_mode()` / `set_model()`** | Change approval posture or model mid-session — control-channel methods, client-only. |
+| **Interrupt gotcha** | Ends as `error_during_execution` with empty `usage`; scrape tokens from stream events, cost survives. |
 
 The throughline: the SDK turns "an agent" from *code you write around the Messages API*
 into *one configured `query()` call*. Your job shifts from running the loop to **specifying
