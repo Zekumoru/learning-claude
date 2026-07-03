@@ -63,6 +63,10 @@ async def can_use_tool(
 
 ### When is the callback actually consulted? (the part that bites)
 
+**In one line:** the SDK skips your function whenever it can approve a tool some other way,
+so to make your function run you have to close those other doors — `setting_sources=[]`,
+`permission_mode="default"`, and don't list the tool in `allowed_tools`.
+
 `can_use_tool` is **not** called for every tool. It fires only when a call would *otherwise
 prompt*. It is **skipped** — the tool just runs — in three cases (all verified by running
 this script):
