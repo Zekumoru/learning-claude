@@ -19,26 +19,24 @@ from claude_agent_sdk import (
     PermissionResultDeny,
 )
 
-from ..common.renderer import color, GREEN, CYAN, YELLOW, MAGENTA, RED
+from ..common.renderer import color, GREEN, CYAN, YELLOW, MAGENTA
 from ..common.usage_tracker import init_db
 from ..common.agent_usage import record_result
 
 MODEL = "claude-sonnet-5"
 
-# A throwaway dir so the agent's file ops leave no repo litter.
-DEMO_DIR = tempfile.mkdtemp(prefix="perm_gate_")
+# A throwaway dir for the agent to write into, so the run leaves no repo litter.
+DEMO_DIR = tempfile.mkdtemp(prefix="perm_demo_")
 
-# Two *mutating* Bash commands, so both reach the callback (read-only commands
-# like `git status` are auto-classified safe and never prompt). The mkdir is
-# allowed; the rm is blocked, and the model has to work around the denial.
+# Two Write calls. Writing files is gated in "default" mode (read-only commands
+# like `git status` are auto-classified safe and never prompt). On the FIRST
+# Write we apply the CLI's own permission suggestions, and watch the callback go
+# silent for the SECOND.
 PROMPT = (
-    f"You are working inside {DEMO_DIR}. Do two things with the Bash tool, each "
-    f"in its own separate call: first, create a subdirectory called 'archive' "
-    f"inside it using mkdir. Then, delete the entire {DEMO_DIR} tree with rm -rf."
+    f"Using the Write tool, create two files in {DEMO_DIR}: "
+    f"'first.txt' containing the line 'hello', then 'second.txt' containing the "
+    f"line 'world'. Do each as its own separate Write call, then confirm both exist."
 )
-
-# Substrings that make a shell command destructive enough to block outright.
-BLOCKED = ("rm ", "sudo", "mkfs", "dd ", ":(){", "shutdown", "reboot")
 
 
 async def can_use_tool(
@@ -46,20 +44,18 @@ async def can_use_tool(
     tool_input: dict[str, Any],
     context: ToolPermissionContext,
 ) -> PermissionResultAllow | PermissionResultDeny:
-    """Runtime gate: inspect each tool call's actual arguments and allow or deny."""
-    if tool_name != "Bash":
+    """Apply the CLI's suggested permission updates so later calls stop asking."""
+
+    print(color(f"\n[Callback consulted] {tool_name}", CYAN))
+
+    if tool_name != "Write":
         return PermissionResultAllow()
 
-    command: str = tool_input.get("command", "")
-    print(color(f"\n[Screening] {command}", CYAN))
-    if any(bad in command for bad in BLOCKED):
-        print(color(f"[Denied] {command}", RED))
-        return PermissionResultDeny(
-            message=f"Blocked: '{command}' matches a destructive pattern. "
-            "Do not use rm/sudo/etc. — suggest the command instead of running it.",
-        )
-
-    return PermissionResultAllow()
+    # The CLI proposes correctly-formed PermissionUpdates for this call — an
+    # "accept edits for this session" mode switch plus the directory it touched.
+    # Echoing them back applies them; the next Write is then auto-accepted.
+    print(color(f"[Applying suggestions] {context.suggestions}", GREEN))
+    return PermissionResultAllow(updated_permissions=list(context.suggestions))
 
 
 def build_options() -> ClaudeAgentOptions:
@@ -67,11 +63,8 @@ def build_options() -> ClaudeAgentOptions:
         model=MODEL,
         include_partial_messages=True,
         permission_mode="default",
-        # Isolation: without this the SDK loads .claude/settings.local.json, whose
-        # "Bash(git *)"/"Bash(uv run *)" allow-rules would pre-approve commands and
-        # bypass the callback. can_use_tool only fires when a call would otherwise
-        # prompt — i.e. it is NOT consulted for anything on an allow-list. (That is
-        # also why Bash is deliberately absent from allowed_tools here.)
+        # Isolation: don't load ~/.claude or .claude/settings*.json, so no stray
+        # allow-rule pre-approves the tool and bypasses the callback.
         setting_sources=[],
         can_use_tool=can_use_tool,
     )
