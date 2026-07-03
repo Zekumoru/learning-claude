@@ -50,9 +50,11 @@ playground/          # Course exercises and Agent SDK experiments
 
 **Section 11 (Claude Agent SDK, Python) — COMPLETE.** Covered `ClaudeAgentOptions`, `query()` vs `ClaudeSDKClient`, multi-turn, streaming, interrupts, and plan/permission modes. Scripts live in `playground/11_agents_sdk/`.
 
-**Next up — sections 12–16 (self-directed Agent SDK deep dive).** Spine is ordered; each builds on the last. 23 sub-sections total.
+**Section 12 (Custom tools) — COMPLETE.** Covered extended thinking + `effort`, the `@tool`/`create_sdk_mcp_server` in-process tool model, the `TypedDict`-as-`input_schema` typing fix (since `@tool` bakes in `Any`), and multiple tools with typed input *and* output. Scripts + README live in `playground/12_custom_tools/`.
 
-- **12 — Custom tools:** 12a thinking/effort warm-up · 12b first `@tool` · 12c real tools + typed I/O (with a read-only note on server-side tool blocks) · *(server tools demoted to a note — under-documented through the SDK, needs a paid live run to confirm)*
+**Next up — sections 13–16 (self-directed Agent SDK deep dive).** Spine is ordered; each builds on the last.
+
+- **13 — Permissions & hooks:** 13a `can_use_tool` · 13b dynamic `PermissionUpdate` · 13c/13d hooks (Pre/PostToolUse, then the rest) · 13e `PreCompact` · 13f `DeferredToolUse`
 - **13 — Permissions & hooks:** 13a `can_use_tool` · 13b dynamic `PermissionUpdate` · 13c/13d hooks (Pre/PostToolUse, then the rest) · 13e `PreCompact` · 13f `DeferredToolUse`
 - **14 — Subagents:** 14a `AgentDefinition`/`agents` · 14b task lifecycle messages · 14c `list_subagents`/`get_subagent_messages` · 14d skills & plugins
 - **15 — Sessions:** 15a resume/continue · 15b `fork_session` · 15c session store · 15d rename/tag/delete/summarize
